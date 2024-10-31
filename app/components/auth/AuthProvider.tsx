@@ -2,20 +2,18 @@
 
 import { Amplify } from 'aws-amplify';
 
-const region = process.env.NEXT_PUBLIC_AWS_REGION;
-const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
-const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
-
-if (!region || !userPoolId || !userPoolClientId) {
+if (!process.env.NEXT_PUBLIC_AWS_REGION ||
+    !process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ||
+    !process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID) {
   throw new Error('Missing required environment variables for Amplify configuration');
 }
 
 Amplify.configure({
   Auth: {
     Cognito: {
-      region,
-      userPoolId,
-      userPoolClientId
+      userPoolClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
+      userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
+      signUpVerificationMethod: 'code'
     }
   }
 });
