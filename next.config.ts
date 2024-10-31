@@ -1,8 +1,5 @@
 const nextConfig = {
-  output: 'export',
-  images: {
-    unoptimized: true
-  },
+  swcMinify: true,
   webpack: (config) => {
     config.resolve.fallback = {
       "aws-sdk": false
