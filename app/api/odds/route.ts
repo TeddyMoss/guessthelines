@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
 
-const API_KEY = process.env.ODDS_API_KEY;
+interface Game {
+  id: string;
+  weekNumber: string;
+  away_team: string;
+  home_team: string;
+  commence_time: string;
+  vegas_line: number;
+  type?: 'regular' | 'playoff';
+  message?: string;
+}
 
 interface WeekInfo {
   number: string;
@@ -9,117 +18,72 @@ interface WeekInfo {
 }
 
 interface WeekResponse {
-  games: any[];
+  games: Game[];
   weeks: WeekInfo[];
   currentWeek: string;
 }
 
 function getCurrentWeekNumber(): string {
-  const seasonStart = new Date('2023-09-07'); // NFL 2023 season start
-  const today = new Date();
-  
-  // If before season start, return first available week
-  if (today < seasonStart) return '8';
-  
-  const diffTime = today.getTime() - seasonStart.getTime();
-  const diffWeeks = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7));
-  return Math.min(Math.max(8, diffWeeks), 18).toString();
+  return '8';
 }
 
 function createMockData(): WeekResponse {
-  const games = [];
+  const games: Game[] = [];
   const currentWeek = getCurrentWeekNumber();
-  
+
   // Create week information
   const weeks: WeekInfo[] = [];
-  
-  // Regular season weeks (8-18)
-  for (let week = 8; week <= 18; week++) {
-    const weekStart = new Date('2023-09-07');
-    weekStart.setDate(weekStart.getDate() + (week - 1) * 7);
-    
+  for (let i = 1; i <= 18; i++) {
     weeks.push({
-      number: week.toString(),
-      startDate: weekStart.toISOString(),
-      available: week <= parseInt(currentWeek)
+      number: i.toString(),
+      startDate: new Date(2024, 8, i * 7).toISOString(), // Example dates
+      available: i <= parseInt(currentWeek)
     });
   }
 
-  // Playoff weeks
-  const playoffWeeks = [
-    { number: 'wild-card', date: '2024-01-13' },
-    { number: 'divisional', date: '2024-01-20' },
-    { number: 'conference', date: '2024-01-27' },
-    { number: 'super-bowl', date: '2024-02-11' }
-  ];
-
-  playoffWeeks.forEach(week => {
+  // Add playoff weeks
+  ['WC', 'DIV', 'CONF', 'SB'].forEach((weekType, index) => {
     weeks.push({
-      number: week.number,
-      startDate: new Date(week.date).toISOString(),
-      available: false // Playoffs not available until regular season ends
+      number: weekType,
+      startDate: new Date(2025, 0, 7 + index * 7).toISOString(),
+      available: false
     });
   });
 
-  // Weekly matchups
-  const weeklyGames = {
-    '8': [
-      { away: "Buccaneers", home: "Bills", line: -3.5 },
-      { away: "Rams", home: "Cowboys", line: -7 },
-      { away: "Vikings", home: "Packers", line: -2.5 },
-      { away: "Saints", home: "Colts", line: -1.5 }
-    ],
-    '9': [
-      { away: "Titans", home: "Steelers", line: -3 },
-      { away: "Dolphins", home: "Chiefs", line: -6.5 },
-      { away: "Vikings", home: "Falcons", line: -4 },
-      { away: "Seahawks", home: "Ravens", line: -5.5 }
-    ],
-    // Add more weeks as needed
+  // Create mock games for current week
+  const mockTeams = {
+    week8: [
+      { away: "Patriots", home: "Dolphins", line: -9.5 },
+      { away: "Jets", home: "Giants", line: -3 },
+      { away: "Jaguars", home: "Steelers", line: 2.5 },
+      { away: "Falcons", home: "Titans", line: 2.5 },
+      { away: "Saints", home: "Colts", line: -1 },
+      { away: "Eagles", home: "Commanders", line: 6.5 },
+      { away: "Texans", home: "Panthers", line: 3 },
+      { away: "Rams", home: "Cowboys", line: -6.5 },
+      { away: "Vikings", home: "Packers", line: 1 },
+      { away: "Browns", home: "Seahawks", line: 3.5 },
+      { away: "Chiefs", home: "Broncos", line: 7 },
+      { away: "Bengals", home: "49ers", line: -4.5 },
+      { away: "Bears", home: "Chargers", line: -8.5 },
+      { away: "Raiders", home: "Lions", line: -8 }
+    ]
   };
 
-  // Create regular season games
-  Object.entries(weeklyGames).forEach(([week, matchups]) => {
-    const weekInfo = weeks.find(w => w.number === week);
-    if (!weekInfo?.available) return;
-
-    matchups.forEach((game, index) => {
-      games.push({
-        id: `week${week}-game${index}`,
-        weekNumber: week,
-        away_team: game.away,
-        home_team: game.home,
-        commence_time: weekInfo.startDate,
-        vegas_line: game.line,
-        type: 'regular'
-      });
-    });
-  });
-
-  // Add playoff placeholders
-  const playoffMessages = {
-    'wild-card': '"Playoffs?! Don\'t talk about playoffs! You kidding me? Playoffs?! I just hope we can win a game!"',
-    'divisional': '"I\'m just trying to be the best coach I can be... and right now that means telling you these games aren\'t available yet!"',
-    'conference': '"Championships?! Let\'s talk about that after Week 18!"',
-    'super-bowl': '"Super Bowl?! You wanna talk about the Super Bowl?! I just wanna see the regular season games!"'
-  };
-
-  playoffWeeks.forEach(week => {
+  mockTeams.week8.forEach((matchup, index) => {
     games.push({
-      id: `playoff-${week.number}`,
-      weekNumber: week.number,
-      away_team: "TBD",
-      home_team: "TBD",
-      commence_time: new Date(week.date).toISOString(),
-      vegas_line: 0,
-      type: 'playoff',
-      message: playoffMessages[week.number as keyof typeof playoffMessages]
+      id: `week8_${index}`,
+      weekNumber: "8",
+      away_team: matchup.away,
+      home_team: matchup.home,
+      commence_time: new Date(2024, 9, 29 + Math.floor(index / 13)).toISOString(),
+      vegas_line: matchup.line
     });
   });
 
   return {
     games,
-    weeks: weeks.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
+    weeks,
     currentWeek
   };
 }
@@ -129,7 +93,7 @@ export async function GET() {
     const data = createMockData();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json({ error: 'Failed to create mock data' }, { status: 500 });
+    console.error('Error fetching odds:', error);
+    return NextResponse.json({ error: 'Failed to fetch odds' }, { status: 500 });
   }
 }
