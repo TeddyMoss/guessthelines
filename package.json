@@ -39,3 +39,8 @@
     "typescript": "^5"
   }
 }
+{
+  "scripts": {
+    "export": "next export"
+  }
+}

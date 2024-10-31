@@ -1,8 +1,75 @@
-import React from 'react';
+"use client";
 
-// Football field background component
+import React, { useState, useEffect } from 'react';
+import confetti from 'canvas-confetti';
+import { AuthModal } from './auth/AuthModal';
+import { Auth } from 'aws-amplify';
+import { savePicks } from '../utils/db';
+import { X } from 'lucide-react';
+import { saveUserPicks, getUserPicks } from '../../lib/dynamodb';
+
+interface Game {
+  id: string;
+  weekNumber: string;
+  away_team: string;
+  home_team: string;
+  commence_time: string;
+  vegas_line: number;
+  type?: 'regular' | 'playoff';
+  message?: string;
+}
+
+interface GamesData {
+  games: Game[];
+  weeks: WeekInfo[];
+  currentWeek: string;
+}
+
+interface WeekInfo {
+  number: string;
+  startDate: string;
+  available: boolean;
+}
+
+interface Prediction {
+  [gameId: string]: {
+    team: string;
+    line: string;
+    locked?: boolean;
+  };
+}
+
+interface GameSelection {
+  gameId: string;
+  team: string;
+}
+
+interface UserPick {
+  gameId: string;
+  team: string;
+  line: string;
+  actualLine: number;
+}
+
+const SignUpPrompt = ({ onClose, onSignUpClick }: { onClose: () => void; onSignUpClick: () => void }) => (
+  <div className="fixed bottom-4 right-4 mx-4 bg-white p-4 rounded-lg shadow-lg border-2 border-green-500 max-w-sm z-50 animate-slide-up">
+    <div className="flex justify-between items-start">
+      <div>
+        <h3 className="font-bold text-lg mb-1">Track Your Picks Week Over Week</h3>
+        <p className="text-gray-600 text-sm mb-3">Create a free account to save your prediction history.</p>
+        <button onClick={onSignUpClick} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+          Sign Up Free
+        </button>
+      </div>
+      <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+        <X size={20} />
+      </button>
+    </div>
+  </div>
+);
+
 const FieldBackground = () => (
-  <div className="absolute top-0 left-0 w-full h-48 bg-green-700 overflow-hidden">
+  <div className="absolute top-0 left-0 w-full h-48 sm:h-56 md:h-64 bg-green-700 overflow-hidden">
     <div className="relative w-full h-full">
       <div className="absolute inset-0 flex justify-between px-4">
         {[...Array(11)].map((_, i) => (
@@ -14,18 +81,467 @@ const FieldBackground = () => (
   </div>
 );
 
-export default function GuessTheLines() {
+const CelebrationOverlay = ({ onComplete }: { onComplete: () => void }) => {
+  useEffect(() => {
+    const duration = 3000;
+    const animationEnd = Date.now() + duration;
+    const interval = setInterval(() => {
+      if (Date.now() > animationEnd) {
+        clearInterval(interval);
+        onComplete();
+        return;
+      }
+      confetti({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0 },
+        colors: ['#62A87C', '#7CBA94', '#96CCAC']
+      });
+      confetti({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1 },
+        colors: ['#62A87C', '#7CBA94', '#96CCAC']
+      });
+    }, 250);
+    return () => clearInterval(interval);
+  }, [onComplete]);
+
   return (
-    <div className="relative overflow-hidden">
-      <FieldBackground />
-      <div className="relative z-10 max-w-4xl mx-auto px-4 pt-12 pb-16 text-center">
-        <h1 className="text-6xl md:text-7xl font-extrabold text-white mb-6 drop-shadow-lg">
-          Guess The Lines
-        </h1>
-        <p className="text-2xl md:text-3xl text-white font-medium max-w-2xl mx-auto leading-relaxed tracking-wide">
-          The Easiest Way to Play Along With Bill and Sal
-        </p>
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+      <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-white animate-celebration">
+        GOOD JOB BY YOU!
       </div>
+    </div>
+  );
+};
+
+const LineInput = ({ 
+  value, 
+  onChange, 
+  onSubmit,
+  onBlur
+}: { 
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onBlur: () => void;
+}) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      onSubmit();
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (/^[+-]?\d*\.?\d*$/.test(value)) {
+      onChange(value);
+    }
+  };
+
+  const handleInputBlur = () => {
+    if (value) {
+      let num = parseFloat(value);
+      if (!isNaN(num)) {
+        num = Math.round(num * 2) / 2;
+        const sign = value.startsWith('+') ? '+' : '';
+        onChange(sign + num.toFixed(1));
+      }
+    }
+    onBlur();
+  };
+
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      onBlur={handleInputBlur}
+      className="w-20 sm:w-24 p-2 border-2 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500 text-center font-bold text-sm sm:text-base"
+      placeholder="+/- spread"
+      autoFocus
+    />
+  );
+};
+
+const PredictionDisplay = ({ 
+  game,
+  prediction,
+  isSelected,
+  submitted,
+  onUpdate,
+  onConfirm
+}: {
+  game: Game;
+  prediction?: { team: string; line: string };
+  isSelected: boolean;
+  submitted: boolean;
+  onUpdate: (fn: (prev: any) => any) => void;
+  onConfirm: () => void;
+}) => {
+  const formatLine = (line: number | string) => {
+    const numLine = typeof line === 'string' ? parseFloat(line) : line;
+    return numLine > 0 ? `+${numLine}` : numLine;
+  };
+
+  if (isSelected && !submitted) {
+    return (
+      <LineInput
+        value={prediction?.line || ''}
+        onChange={(value) => {
+          onUpdate(prev => ({
+            ...prev,
+            [game.id]: { 
+              ...prev[game.id],
+              line: value
+            }
+          }));
+        }}
+        onSubmit={onConfirm}
+        onBlur={() => {
+          if (prediction?.line) {
+            let num = parseFloat(prediction.line);
+            if (!isNaN(num)) {
+              num = Math.round(num * 2) / 2;
+              const sign = prediction.line.startsWith('+') ? '+' : '';
+              onUpdate(prev => ({
+                ...prev,
+                [game.id]: {
+                  ...prev[game.id],
+                  line: sign + num.toFixed(1),
+                  locked: true
+                }
+              }));
+            }
+          }
+          onConfirm();
+        }}
+      />
+    );
+  }
+
+  if (!prediction) {
+    return <div className="min-w-[120px]" />;
+  }
+
+  return (
+    <div className="text-center space-y-2 min-w-[120px]">
+      <div className="font-bold text-lg">
+        {prediction.team} {formatLine(prediction.line)}
+      </div>
+      {submitted && (
+        <div className="text-gray-600">
+          {prediction.team} {formatLine(game.vegas_line)}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default function GuessTheLines() {
+  const [gamesData, setGamesData] = useState<GamesData>({
+    games: [],
+    weeks: [],
+    currentWeek: ''
+  });
+  const [user, setUser] = useState<any>(null);
+  const [selectedWeek, setSelectedWeek] = useState<string>('8');
+  const [loading, setLoading] = useState(true);
+  const [predictions, setPredictions] = useState<Prediction>({});
+  const [selectedGame, setSelectedGame] = useState<GameSelection | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [showSignUpPrompt, setShowSignUpPrompt] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+
+  useEffect(() => {
+    const fetchGames = async () => {
+      try {
+        const response = await fetch('/api/odds');
+        if (!response.ok) throw new Error('Failed to fetch games');
+        const data = await response.json();
+        setGamesData(data);
+        setSelectedWeek(data.currentWeek);
+      } catch (error) {
+        console.error('Error fetching games:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchGames();
+  }, []);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const currentUser = await Auth.currentAuthenticatedUser();
+        setUser(currentUser);
+        // Load user's picks after authentication
+        if (currentUser) {
+          const userPicks = await getUserPicks(currentUser.username);
+          console.log('User picks loaded:', userPicks);
+          // You can add logic here to display historical picks
+        }
+      } catch (err) {
+        setUser(null);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
+  useEffect(() => {
+    if (submitted && !user) {
+      const timer = setTimeout(() => {
+        setShowSignUpPrompt(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [submitted, user]);
+
+  const handleTeamClick = (gameId: string, team: string) => {
+    if (submitted || predictions[gameId]?.locked) return;
+    setSelectedGame({ gameId, team });
+    setPredictions(prev => ({
+      ...prev,
+      [gameId]: {
+        team,
+        line: prev[gameId]?.line || '',
+        locked: false
+      }
+    }));
+  };
+
+  const handleSubmit = async () => {
+    setSubmitted(true);
+    setShowCelebration(true);
+    setSelectedGame(null);
+
+    if (user) {
+      try {
+        const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => ({
+          gameId,
+          team: prediction.team,
+          line: prediction.line,
+          actualLine: gamesData.games.find(g => g.id === gameId)?.vegas_line
+        }));
+
+        // Save to both existing db and new DynamoDB
+        await Promise.all([
+          savePicks(user.username, selectedWeek, picksToSave),
+          saveUserPicks(user.username, picksToSave)
+        ]);
+        
+        setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
+      } catch (error) {
+        console.error('Error saving picks:', error);
+        setSaveMessage({ type: 'error', text: 'Failed to save picks. Please try again.' });
+      }
+    }
+  };
+
+  const resetPredictions = () => {
+    setPredictions({});
+    setSubmitted(false);
+    setSelectedGame(null);
+    setShowSignUpPrompt(false);
+    setSaveMessage(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  const filteredGames = gamesData.games.filter(game => game.weekNumber === selectedWeek);
+  const availableWeeks = gamesData.weeks
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+    .map(week => week.number);
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {showCelebration && <CelebrationOverlay onComplete={() => setShowCelebration(false)} />}
+      {showSignUpPrompt && (
+        <SignUpPrompt
+          onClose={() => setShowSignUpPrompt(false)}
+          onSignUpClick={() => {
+            setShowSignUpPrompt(false);
+            setShowAuthModal(true);
+          }}
+        />
+      )}
+      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} initialMode="signup" />}
+      
+      <div className="relative overflow-hidden">
+        <FieldBackground />
+        
+        <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-30">
+          {user ? (
+            <div className="flex items-center gap-2 sm:gap-4">
+              <span className="text-white text-sm sm:text-base">{user.attributes.email}</span>
+              <button 
+                onClick={() => Auth.signOut()}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setShowAuthModal(true)}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
+            >
+              Sign In
+            </button>
+          )}
+        </div>
+
+        <div className="relative z-10 max-w-4xl mx-auto px-4 pt-8 sm:pt-12 pb-12 sm:pb-16 text-center">
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold text-white mb-4 sm:mb-6 drop-shadow-lg">
+            Guess The Lines
+          </h1>
+          <p className="text-xl sm:text-2xl md:text-3xl text-white font-medium max-w-2xl mx-auto leading-relaxed">
+            The Easiest Way to Play Along With Bill and Sal
+          </p>
+        </div>
+
+        <div className="relative z-20 max-w-4xl mx-auto px-2 sm:px-4 pb-8 sm:pb-12">
+          <div className="bg-white rounded-lg shadow-lg mb-6 sm:mb-8 p-4">
+            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-center">Select Week</h2>
+            <div className="flex flex-wrap justify-center gap-2">
+              {availableWeeks.map((week) => (
+                <button
+                  key={week}
+                  onClick={() => {
+                    setSelectedWeek(week);
+                    resetPredictions();
+                  }}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold transition-colors text-sm sm:text-base ${
+                    selectedWeek === week
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-50 text-gray-700 hover:bg-green-50'
+                  }`}
+                >
+                  {isNaN(parseInt(week)) ? String(week).toUpperCase() : `Week ${week}`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3 sm:space-y-4">
+            {filteredGames.map((game) => (
+              <div key={game.id} className="bg-white rounded-lg shadow p-3 sm:p-6">
+                <div className="font-bold text-base sm:text-lg mb-2 sm:mb-4">
+                  {game.type === 'playoff' ? String(game.weekNumber).toUpperCase() : `Week ${game.weekNumber}`}
+                </div>
+                {game.type === 'playoff' ? (
+                  <div className="text-lg sm:text-xl italic text-gray-600 py-6 sm:py-8 text-center">
+                    {game.message}
+                    <div className="text-xs sm:text-sm mt-3 sm:mt-4 font-normal">- Jim Mora</div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                    <div className="flex-1 flex items-center justify-center sm:justify-end w-full sm:w-auto">
+                      <button
+                        onClick={() => handleTeamClick(game.id, game.away_team)}
+                        className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
+                          ${selectedGame?.gameId === game.id && selectedGame?.team === game.away_team
+                            ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
+                            : predictions[game.id]?.team === game.away_team
+                            ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
+                            : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
+                          } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
+                        disabled={submitted}
+                      >
+                        {game.away_team}
+                      </button>
+                    </div>
+                    
+                    <PredictionDisplay
+                      game={game}
+                      prediction={predictions[game.id]}
+                      isSelected={selectedGame?.gameId === game.id}
+                      submitted={submitted}
+                      onUpdate={setPredictions}
+                      onConfirm={() => setSelectedGame(null)}
+                    />
+                    
+                    <div className="flex-1 flex items-center justify-center sm:justify-start w-full sm:w-auto">
+                      <button
+                        onClick={() => handleTeamClick(game.id, game.home_team)}
+                        className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
+                          ${selectedGame?.gameId === game.id && selectedGame?.team === game.home_team
+                            ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
+                            : predictions[game.id]?.team === game.home_team
+                            ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
+                            : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
+                          } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
+                        disabled={submitted}
+                      >
+                        {game.home_team}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {filteredGames.length > 0 && filteredGames[0].type !== 'playoff' && (
+            <div className="flex justify-center pt-6">
+              <button
+                onClick={submitted ? resetPredictions : handleSubmit}
+                className="px-4 sm:px-6 py-2 sm:py-3 bg-green-600 text-white rounded-lg text-base sm:text-lg font-semibold hover:bg-green-700 transition-colors shadow-lg hover:shadow-xl"
+              >
+                {submitted ? 'Make New Predictions' : 'Submit Predictions'}
+              </button>
+            </div>
+          )}
+
+        
+
+          {saveMessage && (
+            <div className={`mt-4 p-2 rounded text-sm sm:text-base ${
+              saveMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}>
+              {saveMessage.text}
+            </div>
+          )}
+        </div>
+      </div>
+      <style jsx>{`
+        @keyframes celebration {
+          0% { transform: scale(0.5); opacity: 0; }
+          50% { transform: scale(1.2); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-celebration {
+          animation: celebration 1s ease-out forwards;
+          text-shadow: 0 0 20px rgba(34, 197, 94, 0.8);
+        }
+        @keyframes slide-up {
+          from {
+            transform: translateY(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
