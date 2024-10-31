@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { AuthModal } from './auth/AuthModal';
-import { Auth } from 'aws-amplify';
+import { signOut, getCurrentUser } from 'aws-amplify/auth';
 import { savePicks } from '../utils/db';
 import { X } from 'lucide-react';
 import { saveUserPicks, getUserPicks } from '../../lib/dynamodb';
@@ -43,14 +43,6 @@ interface GameSelection {
   gameId: string;
   team: string;
 }
-
-interface UserPick {
-  gameId: string;
-  team: string;
-  line: string;
-  actualLine: number;
-}
-
 const SignUpPrompt = ({ onClose, onSignUpClick }: { onClose: () => void; onSignUpClick: () => void }) => (
   <div className="fixed bottom-4 right-4 mx-4 bg-white p-4 rounded-lg shadow-lg border-2 border-green-500 max-w-sm z-50 animate-slide-up">
     <div className="flex justify-between items-start">
@@ -241,7 +233,6 @@ const PredictionDisplay = ({
     </div>
   );
 };
-
 export default function GuessTheLines() {
   const [gamesData, setGamesData] = useState<GamesData>({
     games: [],
@@ -280,13 +271,12 @@ export default function GuessTheLines() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const currentUser = await Auth.currentAuthenticatedUser();
+        const currentUser = await getCurrentUser();
         setUser(currentUser);
         // Load user's picks after authentication
         if (currentUser) {
-          const userPicks = await getUserPicks(currentUser.username);
+          const userPicks = await getUserPicks(currentUser.userId);
           console.log('User picks loaded:', userPicks);
-          // You can add logic here to display historical picks
         }
       } catch (err) {
         setUser(null);
@@ -332,10 +322,9 @@ export default function GuessTheLines() {
           actualLine: gamesData.games.find(g => g.id === gameId)?.vegas_line
         }));
 
-        // Save to both existing db and new DynamoDB
         await Promise.all([
-          savePicks(user.username, selectedWeek, picksToSave),
-          saveUserPicks(user.username, picksToSave)
+          savePicks(user.userId, selectedWeek, picksToSave),
+          saveUserPicks(user.userId, picksToSave)
         ]);
         
         setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
@@ -345,7 +334,6 @@ export default function GuessTheLines() {
       }
     }
   };
-
   const resetPredictions = () => {
     setPredictions({});
     setSubmitted(false);
@@ -387,9 +375,9 @@ export default function GuessTheLines() {
         <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-30">
           {user ? (
             <div className="flex items-center gap-2 sm:gap-4">
-              <span className="text-white text-sm sm:text-base">{user.attributes.email}</span>
+              <span className="text-white text-sm sm:text-base">{user.username}</span>
               <button 
-                onClick={() => Auth.signOut()}
+                onClick={() => signOut()}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
               >
                 Sign Out
@@ -506,8 +494,6 @@ export default function GuessTheLines() {
               </button>
             </div>
           )}
-
-        
 
           {saveMessage && (
             <div className={`mt-4 p-2 rounded text-sm sm:text-base ${
