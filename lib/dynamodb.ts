@@ -4,8 +4,8 @@ import { DynamoDBDocumentClient, PutCommand, QueryCommand } from "@aws-sdk/lib-d
 const client = new DynamoDBClient({
   region: process.env.NEXT_PUBLIC_AWS_REGION,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!
+    accessKeyId: process.env.AMPLIFY_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AMPLIFY_SECRET_ACCESS_KEY!
   }
 });
 
