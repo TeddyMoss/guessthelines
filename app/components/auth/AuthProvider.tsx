@@ -14,12 +14,9 @@ console.log('Auth Config:', { region, userPoolId, userPoolClientId });
 
 Amplify.configure({
   Auth: {
-    Cognito: {
-      region,
-      userPoolId,
-      userPoolClientId,
-      signUpVerificationMethod: 'code'
-    }
+    userPoolId,
+    userPoolClientId,
+    signUpVerificationMethod: 'code'
   }
 });
 
