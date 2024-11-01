@@ -2,18 +2,22 @@
 
 import { Amplify } from 'aws-amplify';
 
-console.log('Auth Config:', {
-  region: process.env.NEXT_PUBLIC_AWS_REGION,
-  userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
-  userPoolClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID
-});
+const region = process.env.NEXT_PUBLIC_AWS_REGION;
+const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
+const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+
+if (!region || !userPoolId || !userPoolClientId) {
+  throw new Error('Missing required Cognito configuration');
+}
+
+console.log('Auth Config:', { region, userPoolId, userPoolClientId });
 
 Amplify.configure({
   Auth: {
     Cognito: {
-      region: process.env.NEXT_PUBLIC_AWS_REGION,
-      userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
-      userPoolClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
+      region,
+      userPoolId,
+      userPoolClientId,
       signUpVerificationMethod: 'code'
     }
   }
