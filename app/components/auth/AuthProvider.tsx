@@ -2,28 +2,38 @@
 
 import { Amplify } from 'aws-amplify';
 
-const region = process.env.NEXT_PUBLIC_AWS_REGION;
-const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
-const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
-
-if (!region || !userPoolId || !userPoolClientId) {
-  throw new Error('Missing required Cognito configuration');
+// Check for required environment variables
+if (!process.env.NEXT_PUBLIC_AWS_REGION || 
+    !process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || 
+    !process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID) {
+  console.error('Missing AWS configuration');
 }
 
-console.log('Auth Config:', { region, userPoolId, userPoolClientId });
-
+// Configure Amplify
 Amplify.configure({
+  aws_project_region: process.env.NEXT_PUBLIC_AWS_REGION,
+  aws_cognito_region: process.env.NEXT_PUBLIC_AWS_REGION,
+  aws_user_pools_id: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
+  aws_user_pools_web_client_id: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
   Auth: {
     Cognito: {
-      userPoolId,
-      userPoolClientId,
+      allowGuestAccess: false,
       loginWith: {
-        email: true
+        email: true,
+        username: false
       }
     }
   }
 });
 
+// Debug log to check environment variables
+console.log('ENV:', {
+  region: process.env.NEXT_PUBLIC_AWS_REGION,
+  userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
+  clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID
+});
+
+// Component that wraps the app with Amplify configuration
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
