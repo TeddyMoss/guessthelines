@@ -23,43 +23,70 @@ interface WeekResponse {
   currentWeek: string;
 }
 
+// Add interface for API response
+interface OddsApiResponse {
+  id: string;
+  sport_key: string;
+  commence_time: string;
+  home_team: string;
+  away_team: string;
+  bookmakers: Array<{
+    markets: Array<{
+      key: string;
+      outcomes: Array<{
+        name: string;
+        price: number;
+        point: number;
+      }>;
+    }>;
+  }>;
+}
+
 function getCurrentWeekNumber(): string {
-  return '8';
+  return '8'; // We'll make this dynamic later
 }
 
 async function fetchOddsData(): Promise<Game[]> {
   const API_KEY = process.env.ODDS_API_KEY;
-  console.log('Attempting to fetch with API Key:', API_KEY ? 'Key exists' : 'No key found');
+  const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds';
+  const fullUrl = `${ODDS_API_URL}?apiKey=${API_KEY}&regions=us&markets=spreads`;
   
-  const ODDS_API_URL = `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds?apiKey=${API_KEY}&regions=us&markets=spreads`;
-  console.log('Fetching from URL:', ODDS_API_URL);
+  console.log('Starting API fetch...');
 
   try {
-    const response = await fetch(ODDS_API_URL);
-    console.log('API Response status:', response.status);
+    const response = await fetch(fullUrl);
+    console.log('API Response Status:', response.status);
     
     if (!response.ok) {
-      console.error('API Response not ok:', await response.text());
-      throw new Error('Failed to fetch odds');
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`API request failed: ${response.status}`);
     }
-    
-    const data = await response.json();
-    console.log('Raw API data:', data);
 
-    return data.map((game: any, index: number) => {
-      // Find the spread market
-      const spread = game.bookmakers[0]?.markets.find((m: any) => m.key === 'spreads');
-      const line = spread?.outcomes[0]?.point || 0;
+    const data = await response.json() as OddsApiResponse[];
+    console.log('Raw API Response:', JSON.stringify(data, null, 2));
+
+    if (!Array.isArray(data)) {
+      console.error('Expected array response, got:', typeof data);
+      throw new Error('Invalid API response format');
+    }
+
+    return data.map((game: OddsApiResponse, index: number) => {
+      // Get the first bookmaker's spread market
+      const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads');
+      const spreadOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
+      const line = spreadOutcome?.point || 0;
 
       console.log('Processing game:', {
-        away: game.away_team,
+        id: game.id,
         home: game.home_team,
+        away: game.away_team,
         line: line
       });
 
       return {
-        id: `week8_${index}`,
-        weekNumber: "8",
+        id: game.id || `week8_${index}`,
+        weekNumber: "8",  // We'll make this dynamic later
         away_team: game.away_team,
         home_team: game.home_team,
         commence_time: game.commence_time,
@@ -67,7 +94,8 @@ async function fetchOddsData(): Promise<Game[]> {
       };
     });
   } catch (error) {
-    console.error('Error in fetchOddsData:', error);
+    console.error('Error fetching odds:', error);
+    console.error('Stack trace:', (error as Error).stack);
     return [];
   }
 }
@@ -134,20 +162,20 @@ function createMockData(): WeekResponse {
 }
 
 export async function GET() {
+  console.log('Starting GET request handler');
+  
   try {
-    console.log('Starting GET request handler...');
     let games = await fetchOddsData();
-    
-    console.log('Fetched games length:', games.length);
-    
-    // If API fails or returns no games, use mock data
+    console.log('Fetched games count:', games.length);
+
     if (games.length === 0) {
-      console.log('No games from API, using mock data');
+      console.log('No games from API, falling back to mock data');
       const mockData = createMockData();
       games = mockData.games;
+    } else {
+      console.log('Using real data from API');
     }
 
-    // Create full response
     const currentWeek = getCurrentWeekNumber();
     const weeks = createMockData().weeks;
 
@@ -156,11 +184,13 @@ export async function GET() {
       weeks,
       currentWeek
     };
-    
-    console.log('Sending response:', response);
+
+    console.log('Sending response with games count:', response.games.length);
     return NextResponse.json(response);
   } catch (error) {
     console.error('Error in GET handler:', error);
-    return NextResponse.json({ error: 'Failed to fetch odds' }, { status: 500 });
+    // Fallback to mock data on error
+    const mockData = createMockData();
+    return NextResponse.json(mockData);
   }
 }
