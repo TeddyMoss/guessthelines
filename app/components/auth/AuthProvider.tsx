@@ -19,12 +19,14 @@ Amplify.configure({
   Auth: {
     Cognito: {
       userPoolClientId,
-      userPoolId
-    },
-    credentials: {
-      region
+      userPoolId,
+      // Using undefined instead of empty string for optional values
+      identityPoolId: undefined,
+      signUpVerificationMethod: 'code'
     }
-  }
+  },
+  // Add region at root level
+  region
 });
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
