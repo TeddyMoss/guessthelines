@@ -21,8 +21,32 @@ interface WeekResponse {
   currentWeek: string;
 }
 
+interface BookmakerOutcome {
+  name: string;
+  point: number;
+  price?: number;
+}
+
+interface BookmakerMarket {
+  key: string;
+  outcomes: BookmakerOutcome[];
+}
+
+interface Bookmaker {
+  key: string;
+  markets: BookmakerMarket[];
+}
+
+interface OddsResponse {
+  id: string;
+  sport_key: string;
+  commence_time: string;
+  home_team: string;
+  away_team: string;
+  bookmakers: Bookmaker[];
+}
+
 function getSeasonStartDate(year: number): Date {
-  // Find first Thursday of September
   let date = new Date(year, 8, 1); // September 1st
   while (date.getDay() !== 4) { // 4 = Thursday
     date.setDate(date.getDate() + 1);
@@ -35,7 +59,6 @@ function getCurrentWeekNumber(): string {
   const currentYear = now.getFullYear();
   const seasonStart = getSeasonStartDate(currentYear);
   
-  // If before September, use previous year's start
   if (now.getMonth() < 8) { // Before September
     seasonStart.setFullYear(currentYear - 1);
   }
@@ -49,11 +72,8 @@ function getCurrentWeekNumber(): string {
 
 function getWeekFromDate(gameDate: Date): string {
   const gameYear = gameDate.getFullYear();
-  
-  // Find season start date
   let seasonStart = getSeasonStartDate(gameYear);
   
-  // Handle games in January-August being part of previous season
   if (gameDate.getMonth() < 8) { // Before September
     seasonStart.setFullYear(gameYear - 1);
   }
@@ -90,7 +110,7 @@ async function fetchOddsData(): Promise<Game[]> {
       throw new Error(`API request failed: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as OddsResponse[];
     
     if (!Array.isArray(data)) {
       throw new Error('Invalid API response format');
@@ -103,14 +123,14 @@ async function fetchOddsData(): Promise<Game[]> {
   }
 }
 
-function processApiData(data: any[]): Game[] {
+function processApiData(data: OddsResponse[]): Game[] {
   console.log('Processing games:', data.length);
   
   return data
     .filter(game => game.sport_key === 'americanfootball_nfl')
-    .map((game: any) => {
-      const spread = game.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads');
-      const homeOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
+    .map((game) => {
+      const spread = game.bookmakers?.[0]?.markets.find(m => m.key === 'spreads');
+      const homeOutcome = spread?.outcomes.find(o => o.name === game.home_team);
       const line = homeOutcome?.point || 0;
       const gameDate = new Date(game.commence_time);
       const weekNum = getWeekFromDate(gameDate);
