@@ -10,35 +10,22 @@ if (!userPoolId || !userPoolClientId || !region) {
   throw new Error('Missing required Cognito configuration');
 }
 
-// Debug what values we actually have
-console.log('Amplify Config Values:', {
-  region,
-  userPoolId,
-  userPoolClientId
-});
-
 Amplify.configure({
   Auth: {
     Cognito: {
       userPoolId,
       userPoolClientId,
-      loginWith: {
-        email: true,
-        username: true
-      }
-    },
-    region
-  }
+      signUpVerificationMethod: 'code'
+    }
+  },
+  region
+});
+
+console.log('ENV:', {
+  userPoolId,
+  userPoolClientId
 });
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      {/* Add debug output to see if component renders */}
-      <div style={{ display: 'none' }}>
-        Auth Provider Loaded: {userPoolId}
-      </div>
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
