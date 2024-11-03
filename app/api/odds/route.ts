@@ -7,8 +7,6 @@ interface Game {
   home_team: string;
   commence_time: string;
   vegas_line: number;
-  type?: 'regular' | 'playoff';
-  message?: string;
 }
 
 interface WeekInfo {
@@ -23,153 +21,168 @@ interface WeekResponse {
   currentWeek: string;
 }
 
+function getSeasonStartDate(year: number): Date {
+  // Find first Thursday of September
+  let date = new Date(year, 8, 1); // September 1st
+  while (date.getDay() !== 4) { // 4 = Thursday
+    date.setDate(date.getDate() + 1);
+  }
+  return date;
+}
+
 function getCurrentWeekNumber(): string {
-  return '8';
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const seasonStart = getSeasonStartDate(currentYear);
+  
+  // If before September, use previous year's start
+  if (now.getMonth() < 8) { // Before September
+    seasonStart.setFullYear(currentYear - 1);
+  }
+  
+  const diffTime = now.getTime() - seasonStart.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const weekNumber = Math.floor(diffDays / 7) + 1;
+  
+  return Math.min(Math.max(weekNumber, 1), 18).toString();
+}
+
+function getWeekFromDate(gameDate: Date): string {
+  const gameYear = gameDate.getFullYear();
+  
+  // Find season start date
+  let seasonStart = getSeasonStartDate(gameYear);
+  
+  // Handle games in January-August being part of previous season
+  if (gameDate.getMonth() < 8) { // Before September
+    seasonStart.setFullYear(gameYear - 1);
+  }
+  
+  const diffTime = gameDate.getTime() - seasonStart.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const weekNumber = Math.floor(diffDays / 7) + 1;
+
+  console.log('Week Calculation:', {
+    gameDate: gameDate.toISOString(),
+    seasonStart: seasonStart.toISOString(),
+    diffDays,
+    weekNumber
+  });
+
+  return Math.min(Math.max(weekNumber, 1), 18).toString();
 }
 
 async function fetchOddsData(): Promise<Game[]> {
-  console.log('=====================================');
-  console.log('STARTING ODDS API FETCH');
   const API_KEY = process.env.ODDS_API_KEY;
-  console.log('API Key Present:', !!API_KEY);
-  
+
   if (!API_KEY) {
-    console.error('NO API KEY FOUND IN ENVIRONMENT');
-    return [];
+    console.error('API key not found');
+    throw new Error('API configuration missing');
   }
 
   const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds';
   const fullUrl = `${ODDS_API_URL}?apiKey=${API_KEY}&regions=us&markets=spreads`;
-  console.log('API URL (excluding key):', ODDS_API_URL);
 
   try {
-    console.log('Making fetch request...');
     const response = await fetch(fullUrl);
-    console.log('Response status:', response.status);
-
+    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error:', errorText);
       throw new Error(`API request failed: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('Got API data:', !!data);
+    
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid API response format');
+    }
+
     return processApiData(data);
   } catch (error) {
-    console.error('ERROR IN FETCH:', error);
-    return [];
+    console.error('Error fetching odds:', error);
+    throw error;
   }
 }
 
 function processApiData(data: any[]): Game[] {
-  console.log('Processing API data...');
-  return data.map((game: any, index: number) => {
-    console.log(`Processing game ${index}:`, game.home_team, 'vs', game.away_team);
-    const spread = game.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads');
-    const line = spread?.outcomes[0]?.point || 0;
+  console.log('Processing games:', data.length);
+  
+  return data
+    .filter(game => game.sport_key === 'americanfootball_nfl')
+    .map((game: any) => {
+      const spread = game.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads');
+      const homeOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
+      const line = homeOutcome?.point || 0;
+      const gameDate = new Date(game.commence_time);
+      const weekNum = getWeekFromDate(gameDate);
+      
+      console.log('Game processed:', {
+        teams: `${game.away_team} @ ${game.home_team}`,
+        date: game.commence_time,
+        calculatedWeek: weekNum,
+        line: line
+      });
 
-    return {
-      id: `week8_${index}`,
-      weekNumber: "8",
-      away_team: game.away_team,
-      home_team: game.home_team,
-      commence_time: game.commence_time,
-      vegas_line: line
-    };
-  });
+      return {
+        id: game.id,
+        weekNumber: weekNum,
+        away_team: game.away_team,
+        home_team: game.home_team,
+        commence_time: game.commence_time,
+        vegas_line: line
+      };
+    })
+    .sort((a, b) => new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime());
 }
 
-function createMockData(): WeekResponse {
-  const games: Game[] = [];
+function generateWeeks(games: Game[]): WeekInfo[] {
   const currentWeek = getCurrentWeekNumber();
-
-  // Create week information
-  const weeks: WeekInfo[] = [];
-  for (let i = 1; i <= 18; i++) {
-    weeks.push({
-      number: i.toString(),
-      startDate: new Date(2024, 8, i * 7).toISOString(),
-      available: i <= parseInt(currentWeek)
-    });
-  }
-
-  // Add playoff weeks
-  ['WC', 'DIV', 'CONF', 'SB'].forEach((weekType, index) => {
-    weeks.push({
-      number: weekType,
-      startDate: new Date(2025, 0, 7 + index * 7).toISOString(),
-      available: false
-    });
+  const weeksWithGames = [...new Set(games.map(g => g.weekNumber))];
+  
+  console.log('Generating weeks:', {
+    currentWeek,
+    weeksWithGames,
+    gamesCount: games.length
   });
 
-  // Create mock games for current week
-  const mockTeams = {
-    week8: [
-      { away: "Patriots", home: "Dolphins", line: -9.5 },
-      { away: "Jets", home: "Giants", line: -3 },
-      { away: "Jaguars", home: "Steelers", line: 2.5 },
-      { away: "Falcons", home: "Titans", line: 2.5 },
-      { away: "Saints", home: "Colts", line: -1 },
-      { away: "Eagles", home: "Commanders", line: 6.5 },
-      { away: "Texans", home: "Panthers", line: 3 },
-      { away: "Rams", home: "Cowboys", line: -6.5 },
-      { away: "Vikings", home: "Packers", line: 1 },
-      { away: "Browns", home: "Seahawks", line: 3.5 },
-      { away: "Chiefs", home: "Broncos", line: 7 },
-      { away: "Bengals", home: "49ers", line: -4.5 },
-      { away: "Bears", home: "Chargers", line: -8.5 },
-      { away: "Raiders", home: "Lions", line: -8 }
-    ]
-  };
-
-  mockTeams.week8.forEach((matchup, index) => {
-    games.push({
-      id: `week8_${index}`,
-      weekNumber: "8",
-      away_team: matchup.away,
-      home_team: matchup.home,
-      commence_time: new Date(2024, 9, 29 + Math.floor(index / 13)).toISOString(),
-      vegas_line: matchup.line
-    });
-  });
-
-  return {
-    games,
-    weeks,
-    currentWeek
-  };
+  return weeksWithGames
+    .map(weekNum => {
+      const seasonStart = getSeasonStartDate(new Date().getFullYear());
+      const weekStart = new Date(seasonStart);
+      weekStart.setDate(weekStart.getDate() + (parseInt(weekNum) - 1) * 7);
+      
+      return {
+        number: weekNum,
+        startDate: weekStart.toISOString(),
+        available: parseInt(weekNum) >= parseInt(currentWeek)
+      };
+    })
+    .sort((a, b) => parseInt(a.number) - parseInt(b.number));
 }
 
 export async function GET() {
-  console.log('=====================================');
-  console.log('ODDS API ROUTE HANDLER STARTING');
-  
   try {
-    let games = await fetchOddsData();
-    console.log('Games fetched:', games.length);
-
-    if (games.length === 0) {
-      console.log('No games from API - using mock data');
-      const mockData = createMockData();
-      games = mockData.games;
-    } else {
-      console.log('Using real API data');
-    }
-
+    const games = await fetchOddsData();
+    const weeks = generateWeeks(games);
     const currentWeek = getCurrentWeekNumber();
-    const weeks = createMockData().weeks;
 
-    const response = {
+    console.log('Final response:', {
+      totalGames: games.length,
+      totalWeeks: weeks.length,
+      currentWeek
+    });
+
+    const response: WeekResponse = {
       games,
       weeks,
       currentWeek
     };
 
-    console.log('Sending response with games:', response.games.length);
     return NextResponse.json(response);
   } catch (error) {
     console.error('Error in GET handler:', error);
-    return NextResponse.json(createMockData());
+    return NextResponse.json({ 
+      error: 'Unable to fetch game data. Please try again later.',
+      errorDetails: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

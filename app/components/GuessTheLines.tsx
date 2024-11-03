@@ -43,6 +43,24 @@ interface GameSelection {
   gameId: string;
   team: string;
 }
+
+const GameTimeDisplay = ({ startTime }: { startTime: string }) => {
+  const formattedTime = new Date(startTime).toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short'
+  });
+  
+  return (
+    <div className="text-sm text-gray-600 mb-3">
+      {formattedTime}
+    </div>
+  );
+};
+
 const SignUpPrompt = ({ onClose, onSignUpClick }: { onClose: () => void; onSignUpClick: () => void }) => (
   <div className="fixed bottom-4 right-4 mx-4 bg-white p-4 rounded-lg shadow-lg border-2 border-green-500 max-w-sm z-50 animate-slide-up">
     <div className="flex justify-between items-start">
@@ -59,7 +77,6 @@ const SignUpPrompt = ({ onClose, onSignUpClick }: { onClose: () => void; onSignU
     </div>
   </div>
 );
-
 const FieldBackground = () => (
   <div className="absolute top-0 left-0 w-full h-48 sm:h-56 md:h-64 bg-green-700 overflow-hidden">
     <div className="relative w-full h-full">
@@ -106,6 +123,60 @@ const CelebrationOverlay = ({ onComplete }: { onComplete: () => void }) => {
       <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-white animate-celebration">
         GOOD JOB BY YOU!
       </div>
+    </div>
+  );
+};
+
+const WeekSelector = ({ 
+  weeks, 
+  selectedWeek, 
+  onSelect, 
+  currentWeek, 
+  user 
+}: { 
+  weeks: string[], 
+  selectedWeek: string, 
+  onSelect: (week: string) => void, 
+  currentWeek: string,
+  user: any
+}) => {
+  const currentDate = new Date();
+  
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {weeks.map((week) => {
+        const isCurrentWeek = week === currentWeek;
+        const weekStartDate = new Date(); // You'll need to get this from your weeks data
+        const isPastWeek = weekStartDate < currentDate && !isCurrentWeek;
+        
+        if (isPastWeek && !user) return null; // Hide past weeks for non-logged-in users
+        
+        return (
+          <button
+            key={week}
+            onClick={() => onSelect(week)}
+            className={`
+              px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold 
+              transition-colors text-sm sm:text-base 
+              ${selectedWeek === week
+                ? 'bg-green-600 text-white'
+                : isPastWeek
+                  ? 'bg-gray-100 text-gray-400'
+                  : 'bg-gray-50 text-gray-700 hover:bg-green-50'
+              }
+              ${isCurrentWeek ? 'ring-2 ring-green-500' : ''}
+            `}
+            disabled={isPastWeek && !user}
+          >
+            {isNaN(parseInt(week)) ? String(week).toUpperCase() : `Week ${week}`}
+            {isCurrentWeek && (
+              <span className="ml-1 text-xs bg-green-700 text-white px-1 py-0.5 rounded">
+                Current
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 };
@@ -159,7 +230,6 @@ const LineInput = ({
     />
   );
 };
-
 const PredictionDisplay = ({ 
   game,
   prediction,
@@ -233,6 +303,86 @@ const PredictionDisplay = ({
     </div>
   );
 };
+
+const GameCard = ({ 
+  game, 
+  prediction, 
+  isSelected, 
+  submitted, 
+  onTeamClick, 
+  onPredictionUpdate, 
+  onPredictionConfirm 
+}: {
+  game: Game;
+  prediction?: { team: string; line: string };
+  isSelected: boolean;
+  submitted: boolean;
+  onTeamClick: (gameId: string, team: string) => void;
+  onPredictionUpdate: (fn: (prev: any) => any) => void;
+  onPredictionConfirm: () => void;
+}) => (
+  <div className="bg-white rounded-lg shadow p-3 sm:p-6">
+    <div className="font-bold text-base sm:text-lg mb-2">
+      {game.type === 'playoff' ? String(game.weekNumber).toUpperCase() : `Week ${game.weekNumber}`}
+    </div>
+    <GameTimeDisplay startTime={game.commence_time} />
+    {game.type === 'playoff' ? (
+      <div className="text-lg sm:text-xl italic text-gray-600 py-6 sm:py-8 text-center">
+        {game.message}
+        <div className="text-xs sm:text-sm mt-3 sm:mt-4 font-normal">- Jim Mora</div>
+      </div>
+    ) : (
+      <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
+        <div className="flex-1 flex items-center justify-center sm:justify-end w-full sm:w-auto">
+          <div className="flex flex-col items-center sm:items-end">
+            <span className="text-xs text-gray-500 mb-1">Away Team</span>
+            <button
+              onClick={() => onTeamClick(game.id, game.away_team)}
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
+                ${isSelected && prediction?.team === game.away_team
+                  ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
+                  : prediction?.team === game.away_team
+                  ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
+                  : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
+                } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
+              disabled={submitted}
+            >
+              {game.away_team}
+            </button>
+          </div>
+        </div>
+        
+        <PredictionDisplay
+          game={game}
+          prediction={prediction}
+          isSelected={isSelected}
+          submitted={submitted}
+          onUpdate={onPredictionUpdate}
+          onConfirm={onPredictionConfirm}
+        />
+        
+        <div className="flex-1 flex items-center justify-center sm:justify-start w-full sm:w-auto">
+          <div className="flex flex-col items-center sm:items-start">
+            <span className="text-xs text-gray-500 mb-1">Home Team</span>
+            <button
+              onClick={() => onTeamClick(game.id, game.home_team)}
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
+                ${isSelected && prediction?.team === game.home_team
+                  ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
+                  : prediction?.team === game.home_team
+                  ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
+                  : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
+                } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
+              disabled={submitted}
+            >
+              {game.home_team}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+);
 export default function GuessTheLines() {
   const [gamesData, setGamesData] = useState<GamesData>({
     games: [],
@@ -273,7 +423,6 @@ export default function GuessTheLines() {
       try {
         const currentUser = await getCurrentUser();
         setUser(currentUser);
-        // Load user's picks after authentication
         if (currentUser) {
           const userPicks = await getUserPicks(currentUser.userId);
           console.log('User picks loaded:', userPicks);
@@ -308,6 +457,12 @@ export default function GuessTheLines() {
     }));
   };
 
+  const sortGamesByStartTime = (games: Game[]) => {
+    return [...games].sort((a, b) => 
+      new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime()
+    );
+  };
+
   const handleSubmit = async () => {
     setSubmitted(true);
     setShowCelebration(true);
@@ -334,6 +489,7 @@ export default function GuessTheLines() {
       }
     }
   };
+
   const resetPredictions = () => {
     setPredictions({});
     setSubmitted(false);
@@ -350,8 +506,15 @@ export default function GuessTheLines() {
     );
   }
 
-  const filteredGames = gamesData.games.filter(game => game.weekNumber === selectedWeek);
+  const filteredGames = sortGamesByStartTime(
+    gamesData.games.filter(game => game.weekNumber === selectedWeek)
+  );
+
   const availableWeeks = gamesData.weeks
+    .filter(week => {
+      const weekStartDate = new Date(week.startDate);
+      return weekStartDate >= new Date() || week.number === gamesData.currentWeek || user;
+    })
     .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
     .map(week => week.number);
 
@@ -405,82 +568,30 @@ export default function GuessTheLines() {
         <div className="relative z-20 max-w-4xl mx-auto px-2 sm:px-4 pb-8 sm:pb-12">
           <div className="bg-white rounded-lg shadow-lg mb-6 sm:mb-8 p-4">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-center">Select Week</h2>
-            <div className="flex flex-wrap justify-center gap-2">
-              {availableWeeks.map((week) => (
-                <button
-                  key={week}
-                  onClick={() => {
-                    setSelectedWeek(week);
-                    resetPredictions();
-                  }}
-                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold transition-colors text-sm sm:text-base ${
-                    selectedWeek === week
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-50 text-gray-700 hover:bg-green-50'
-                  }`}
-                >
-                  {isNaN(parseInt(week)) ? String(week).toUpperCase() : `Week ${week}`}
-                </button>
-              ))}
-            </div>
+            <WeekSelector 
+              weeks={availableWeeks}
+              selectedWeek={selectedWeek}
+              onSelect={(week) => {
+                setSelectedWeek(week);
+                resetPredictions();
+              }}
+              currentWeek={gamesData.currentWeek}
+              user={user}
+            />
           </div>
 
           <div className="space-y-3 sm:space-y-4">
             {filteredGames.map((game) => (
-              <div key={game.id} className="bg-white rounded-lg shadow p-3 sm:p-6">
-                <div className="font-bold text-base sm:text-lg mb-2 sm:mb-4">
-                  {game.type === 'playoff' ? String(game.weekNumber).toUpperCase() : `Week ${game.weekNumber}`}
-                </div>
-                {game.type === 'playoff' ? (
-                  <div className="text-lg sm:text-xl italic text-gray-600 py-6 sm:py-8 text-center">
-                    {game.message}
-                    <div className="text-xs sm:text-sm mt-3 sm:mt-4 font-normal">- Jim Mora</div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
-                    <div className="flex-1 flex items-center justify-center sm:justify-end w-full sm:w-auto">
-                      <button
-                        onClick={() => handleTeamClick(game.id, game.away_team)}
-                        className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
-                          ${selectedGame?.gameId === game.id && selectedGame?.team === game.away_team
-                            ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
-                            : predictions[game.id]?.team === game.away_team
-                            ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
-                            : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
-                          } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
-                        disabled={submitted}
-                      >
-                        {game.away_team}
-                      </button>
-                    </div>
-                    
-                    <PredictionDisplay
-                      game={game}
-                      prediction={predictions[game.id]}
-                      isSelected={selectedGame?.gameId === game.id}
-                      submitted={submitted}
-                      onUpdate={setPredictions}
-                      onConfirm={() => setSelectedGame(null)}
-                    />
-                    
-                    <div className="flex-1 flex items-center justify-center sm:justify-start w-full sm:w-auto">
-                      <button
-                        onClick={() => handleTeamClick(game.id, game.home_team)}
-                        className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
-                          ${selectedGame?.gameId === game.id && selectedGame?.team === game.home_team
-                            ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
-                            : predictions[game.id]?.team === game.home_team
-                            ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
-                            : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
-                          } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
-                        disabled={submitted}
-                      >
-                        {game.home_team}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <GameCard
+                key={game.id}
+                game={game}
+                prediction={predictions[game.id]}
+                isSelected={selectedGame?.gameId === game.id}
+                submitted={submitted}
+                onTeamClick={handleTeamClick}
+                onPredictionUpdate={setPredictions}
+                onPredictionConfirm={() => setSelectedGame(null)}
+              />
             ))}
           </div>
 
