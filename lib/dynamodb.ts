@@ -1,58 +1,37 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
-// Validate environment variables but don't throw
-function getCredentials() {
-  const credentials = {
-    region: process.env.NEXT_PUBLIC_AWS_REGION,
-    accessKeyId: process.env.AMPLIFY_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AMPLIFY_SECRET_ACCESS_KEY
-  };
+let docClient: DynamoDBDocumentClient | null = null;
 
-  const missing = Object.entries(credentials)
-    .filter(([_, value]) => !value)
-    .map(([key]) => key);
-
-  if (missing.length > 0) {
-    console.warn('Missing AWS credentials:', missing);
-  }
-
-  return credentials;
-}
-
-const credentials = getCredentials();
-
-const client = new DynamoDBClient({
-  region: credentials.region || 'us-east-1',
-  credentials: {
-    accessKeyId: credentials.accessKeyId || '',
-    secretAccessKey: credentials.secretAccessKey || ''
-  },
-  maxAttempts: 3
-});
-
-const docClient = DynamoDBDocumentClient.from(client, {
-  marshallOptions: {
-    removeUndefinedValues: true
-  }
-});
-
-export async function saveUserPicks(userId: string, picks: any[]) {
-  console.log('Attempting to save picks:', {
-    hasCredentials: !!credentials.accessKeyId && !!credentials.secretAccessKey
+try {
+  const client = new DynamoDBClient({
+    region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AMPLIFY_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.AMPLIFY_SECRET_ACCESS_KEY || ''
+    }
   });
 
-  const params = {
-    TableName: 'UserPicks',
-    Item: {
-      userId,
-      timestamp: new Date().toISOString(),
-      picks,
-    }
-  };
+  docClient = DynamoDBDocumentClient.from(client);
+} catch (error) {
+  console.warn('Failed to initialize DynamoDB client:', error);
+}
+
+export async function saveUserPicks(userId: string, picks: any[]) {
+  if (!docClient) {
+    console.warn('DynamoDB client not initialized');
+    return { success: false, error: 'Database not available' };
+  }
 
   try {
-    await docClient.send(new PutCommand(params));
+    await docClient.send(new PutCommand({
+      TableName: 'UserPicks',
+      Item: {
+        userId,
+        timestamp: new Date().toISOString(),
+        picks,
+      }
+    }));
     return { success: true };
   } catch (error) {
     console.error('Error saving picks:', error);
@@ -61,19 +40,22 @@ export async function saveUserPicks(userId: string, picks: any[]) {
 }
 
 export async function getUserPicks(userId: string) {
-  const params = {
-    TableName: 'UserPicks',
-    KeyConditionExpression: 'userId = :userId',
-    ExpressionAttributeValues: {
-      ':userId': userId
-    },
-    ScanIndexForward: false,
-    Limit: 10
-  };
+  if (!docClient) {
+    console.warn('DynamoDB client not initialized');
+    return [];
+  }
 
   try {
-    const result = await docClient.send(new QueryCommand(params));
-    return result.Items;
+    const result = await docClient.send(new QueryCommand({
+      TableName: 'UserPicks',
+      KeyConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: {
+        ':userId': userId
+      },
+      ScanIndexForward: false,
+      Limit: 10
+    }));
+    return result.Items || [];
   } catch (error) {
     console.error('Error fetching picks:', error);
     return [];
