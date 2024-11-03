@@ -17,12 +17,10 @@ console.log('ENV:', {
 
 Amplify.configure({
   Auth: {
-    Cognito: {
-      userPoolId,
-      userPoolClientId,
-      signUpVerificationMethod: 'code',
-      region
-    }
+    userPoolId,
+    userPoolClientId,
+    region,
+    signUpVerificationMethod: 'code'
   }
 });
 
