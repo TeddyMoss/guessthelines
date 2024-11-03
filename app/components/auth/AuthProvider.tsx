@@ -18,9 +18,11 @@ console.log('ENV:', {
 Amplify.configure({
   Auth: {
     Cognito: {
-      userPoolId,
       userPoolClientId,
-      userPoolRegion: region
+      userPoolId
+    },
+    credentials: {
+      region
     }
   }
 });
