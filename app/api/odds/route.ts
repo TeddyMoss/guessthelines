@@ -6,45 +6,7 @@ interface Game {
   away_team: string;
   home_team: string;
   commence_time: string;
-  home_line: number;
-  away_line: number;
-}
-
-interface WeekInfo {
-  number: string;
-  startDate: string;
-  available: boolean;
-}
-
-interface WeekResponse {
-  games: Game[];
-  weeks: WeekInfo[];
-  currentWeek: string;
-  error?: string;
-}
-
-function getSeasonStartDate(year: number): Date {
-  let date = new Date(year, 8, 1); // September 1st
-  while (date.getDay() !== 4) { // 4 = Thursday
-    date.setDate(date.getDate() + 1);
-  }
-  return date;
-}
-
-function getCurrentWeekNumber(): string {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const seasonStart = getSeasonStartDate(currentYear);
-  
-  if (now.getMonth() < 8) {
-    seasonStart.setFullYear(currentYear - 1);
-  }
-  
-  const diffTime = now.getTime() - seasonStart.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  const weekNumber = Math.floor(diffDays / 7) + 1;
-  
-  return Math.min(Math.max(weekNumber, 1), 18).toString();
+  vegas_line: number;
 }
 
 async function fetchOddsData(): Promise<Game[]> {
@@ -93,6 +55,16 @@ async function fetchOddsData(): Promise<Game[]> {
         // Skip if no valid spread data
         if (!spread || !homeOutcome || !awayOutcome) return null;
 
+        // Get the favorite's line (negative number)
+        let vegasLine: number;
+        if (homeOutcome.point < 0) {
+          // Home team is favorite
+          vegasLine = homeOutcome.point;
+        } else {
+          // Away team is favorite
+          vegasLine = -awayOutcome.point;
+        }
+
         // Use game date to determine week number
         const gameDate = new Date(game.commence_time);
         const yearStart = getSeasonStartDate(gameDate.getFullYear());
@@ -103,12 +75,13 @@ async function fetchOddsData(): Promise<Game[]> {
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         const gameWeek = Math.floor(diffDays / 7) + 1;
         
-        console.log('FanDuel Line:', {
+        console.log('Line Calculation:', {
           game: `${game.away_team} @ ${game.home_team}`,
           homeTeam: game.home_team,
           homeLine: homeOutcome.point,
           awayTeam: game.away_team,
-          awayLine: awayOutcome.point
+          awayLine: awayOutcome.point,
+          vegasLine
         });
 
         return {
@@ -117,16 +90,39 @@ async function fetchOddsData(): Promise<Game[]> {
           away_team: game.away_team,
           home_team: game.home_team,
           commence_time: game.commence_time,
-          home_line: homeOutcome.point,
-          away_line: awayOutcome.point
+          vegas_line: vegasLine
         };
       })
-      .filter(game => game !== null) // Remove games without FanDuel odds
+      .filter(game => game !== null)
       .sort((a, b) => new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime());
   } catch (error) {
     console.error('Error in fetchOddsData:', error);
     throw error;
   }
+}
+
+function getSeasonStartDate(year: number): Date {
+  let date = new Date(year, 8, 1); // September 1st
+  while (date.getDay() !== 4) { // 4 = Thursday
+    date.setDate(date.getDate() + 1);
+  }
+  return date;
+}
+
+function getCurrentWeekNumber(): string {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const seasonStart = getSeasonStartDate(currentYear);
+  
+  if (now.getMonth() < 8) {
+    seasonStart.setFullYear(currentYear - 1);
+  }
+  
+  const diffTime = now.getTime() - seasonStart.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const weekNumber = Math.floor(diffDays / 7) + 1;
+  
+  return Math.min(Math.max(weekNumber, 1), 18).toString();
 }
 
 function generateWeeks(games: Game[]): WeekInfo[] {
@@ -143,7 +139,7 @@ function generateWeeks(games: Game[]): WeekInfo[] {
     return {
       number: weekNum,
       startDate: weekStart.toISOString(),
-      available: true  // All weeks in this list should be available since we filtered
+      available: true
     };
   });
 }
