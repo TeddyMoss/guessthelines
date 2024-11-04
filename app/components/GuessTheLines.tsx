@@ -297,7 +297,7 @@ const PredictionDisplay = ({
       </div>
       {submitted && (
         <div className="text-gray-600">
-          {prediction.team} {formatLine(game.vegas_line)}
+          {prediction.team} {formatLine(prediction.team === game.home_team ? game.vegas_line : -game.vegas_line)}
         </div>
       )}
     </div>
