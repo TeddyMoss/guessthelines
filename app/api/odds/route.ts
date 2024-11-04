@@ -58,14 +58,12 @@ async function fetchOddsData(): Promise<Game[]> {
   const fullUrl = `${ODDS_API_URL}?apiKey=${API_KEY}&regions=us&markets=spreads`;
   
   try {
-    console.log('Attempting to fetch odds data');
-    
     const response = await fetch(fullUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json'
       },
-      next: { revalidate: 300 } // Cache for 5 minutes
+      next: { revalidate: 300 }
     });
 
     if (!response.ok) {
@@ -80,8 +78,6 @@ async function fetchOddsData(): Promise<Game[]> {
 
     const data = await response.json();
 
-    console.log('Raw API Response:', JSON.stringify(data[0], null, 2)); // Log first game for structure
-
     return data
       .filter(game => game.sport_key === 'americanfootball_nfl')
       .map(game => {
@@ -89,27 +85,21 @@ async function fetchOddsData(): Promise<Game[]> {
         const homeOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
         const awayOutcome = spread?.outcomes?.find(o => o.name === game.away_team);
         
-        // Log spread details for debugging
-        console.log('Spread Details:', {
-          gameId: game.id,
-          homeTeam: game.home_team,
-          awayTeam: game.away_team,
-          bookmaker: game.bookmakers?.[0]?.title,
-          spread: {
-            homeTeam: homeOutcome?.name,
-            homePoint: homeOutcome?.point,
-            awayTeam: awayOutcome?.name,
-            awayPoint: awayOutcome?.point,
-            rawSpread: spread
-          }
-        });
+        const homeLine = homeOutcome?.point || 0;
+        const line = homeLine;  // Keep the sign as is from the API
 
-        const line = homeOutcome?.point || 0;
+        // Log the spread calculation
+        console.log('Line Calculation:', {
+          game: `${game.away_team} @ ${game.home_team}`,
+          homeTeam: game.home_team,
+          homeLine,
+          finalLine: line
+        });
 
         // Use game date to determine week number
         const gameDate = new Date(game.commence_time);
         const yearStart = getSeasonStartDate(gameDate.getFullYear());
-        if (gameDate.getMonth() < 8) { // If before September
+        if (gameDate.getMonth() < 8) {
           yearStart.setFullYear(yearStart.getFullYear() - 1);
         }
         const diffTime = gameDate.getTime() - yearStart.getTime();
@@ -133,8 +123,10 @@ async function fetchOddsData(): Promise<Game[]> {
 }
 
 function generateWeeks(games: Game[]): WeekInfo[] {
-  const currentWeek = getCurrentWeekNumber();
-  const allWeeks = Array.from({ length: 18 }, (_, i) => (i + 1).toString());
+  const currentWeek = parseInt(getCurrentWeekNumber());
+  const allWeeks = Array.from({ length: 18 }, (_, i) => (i + 1).toString())
+    // Only include current week and future weeks
+    .filter(weekNum => parseInt(weekNum) >= currentWeek);
   
   return allWeeks.map(weekNum => {
     const seasonStart = getSeasonStartDate(new Date().getFullYear());
@@ -144,7 +136,7 @@ function generateWeeks(games: Game[]): WeekInfo[] {
     return {
       number: weekNum,
       startDate: weekStart.toISOString(),
-      available: parseInt(weekNum) >= parseInt(currentWeek)
+      available: true  // All weeks in this list should be available since we filtered
     };
   });
 }
