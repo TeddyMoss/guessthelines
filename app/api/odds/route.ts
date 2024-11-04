@@ -80,11 +80,30 @@ async function fetchOddsData(): Promise<Game[]> {
 
     const data = await response.json();
 
+    console.log('Raw API Response:', JSON.stringify(data[0], null, 2)); // Log first game for structure
+
     return data
       .filter(game => game.sport_key === 'americanfootball_nfl')
       .map(game => {
         const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads');
         const homeOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
+        const awayOutcome = spread?.outcomes?.find(o => o.name === game.away_team);
+        
+        // Log spread details for debugging
+        console.log('Spread Details:', {
+          gameId: game.id,
+          homeTeam: game.home_team,
+          awayTeam: game.away_team,
+          bookmaker: game.bookmakers?.[0]?.title,
+          spread: {
+            homeTeam: homeOutcome?.name,
+            homePoint: homeOutcome?.point,
+            awayTeam: awayOutcome?.name,
+            awayPoint: awayOutcome?.point,
+            rawSpread: spread
+          }
+        });
+
         const line = homeOutcome?.point || 0;
 
         // Use game date to determine week number
@@ -132,12 +151,6 @@ function generateWeeks(games: Game[]): WeekInfo[] {
 
 export async function GET() {
   console.log('Starting /api/odds request');
-  console.log('Environment check:', {
-    hasOddsApiKey: !!process.env.ODDS_API_KEY,
-    hasAwsRegion: !!process.env.NEXT_PUBLIC_AWS_REGION,
-    hasAccessKey: !!process.env.AMPLIFY_ACCESS_KEY_ID,
-    hasSecretKey: !!process.env.AMPLIFY_SECRET_ACCESS_KEY
-  });
   
   try {
     const games = await fetchOddsData();

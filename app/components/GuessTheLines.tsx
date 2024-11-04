@@ -335,19 +335,19 @@ const GameCard = ({
       <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
         <div className="flex-1 flex items-center justify-center sm:justify-end w-full sm:w-auto">
           <div className="flex flex-col items-center sm:items-end">
-            <span className="text-xs text-gray-500 mb-1">Home Team</span>
+            <span className="text-xs text-gray-500 mb-1">Away Team</span>
             <button
-              onClick={() => onTeamClick(game.id, game.home_team)}
+              onClick={() => onTeamClick(game.id, game.away_team)}
               className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
-                ${isSelected && prediction?.team === game.home_team
+                ${isSelected && prediction?.team === game.away_team
                   ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
-                  : prediction?.team === game.home_team
+                  : prediction?.team === game.away_team
                   ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
                   : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
                 } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
               disabled={submitted}
             >
-              {game.home_team}
+              {game.away_team}
             </button>
           </div>
         </div>
@@ -363,19 +363,19 @@ const GameCard = ({
         
         <div className="flex-1 flex items-center justify-center sm:justify-start w-full sm:w-auto">
           <div className="flex flex-col items-center sm:items-start">
-            <span className="text-xs text-gray-500 mb-1">Away Team</span>
+            <span className="text-xs text-gray-500 mb-1">Home Team</span>
             <button
-              onClick={() => onTeamClick(game.id, game.away_team)}
+              onClick={() => onTeamClick(game.id, game.home_team)}
               className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base
-                ${isSelected && prediction?.team === game.away_team
+                ${isSelected && prediction?.team === game.home_team
                   ? 'bg-green-100 border-2 border-green-500 shadow-md transform scale-105'
-                  : prediction?.team === game.away_team
+                  : prediction?.team === game.home_team
                   ? 'bg-gray-50 border-2 border-gray-300 shadow-sm'
                   : 'hover:bg-gray-50 border-2 border-gray-200 shadow hover:shadow-md hover:border-gray-300'
                 } cursor-pointer active:transform active:scale-95 min-w-[100px] sm:min-w-[140px]`}
               disabled={submitted}
             >
-              {game.away_team}
+              {game.home_team}
             </button>
           </div>
         </div>
