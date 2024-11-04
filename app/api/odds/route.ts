@@ -7,6 +7,37 @@ interface Game {
   home_team: string;
   commence_time: string;
   vegas_line: number;
+  favorite: string;
+}
+
+interface WeekInfo {
+  number: string;
+  startDate: string;
+  available: boolean;
+}
+
+function getSeasonStartDate(year: number): Date {
+  let date = new Date(year, 8, 1); // September 1st
+  while (date.getDay() !== 4) { // 4 = Thursday
+    date.setDate(date.getDate() + 1);
+  }
+  return date;
+}
+
+function getCurrentWeekNumber(): string {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const seasonStart = getSeasonStartDate(currentYear);
+  
+  if (now.getMonth() < 8) {
+    seasonStart.setFullYear(currentYear - 1);
+  }
+  
+  const diffTime = now.getTime() - seasonStart.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const weekNumber = Math.floor(diffDays / 7) + 1;
+  
+  return Math.min(Math.max(weekNumber, 1), 18).toString();
 }
 
 async function fetchOddsData(): Promise<Game[]> {
@@ -55,15 +86,9 @@ async function fetchOddsData(): Promise<Game[]> {
         // Skip if no valid spread data
         if (!spread || !homeOutcome || !awayOutcome) return null;
 
-        // Get the favorite's line (negative number)
-        let vegasLine: number;
-        if (homeOutcome.point < 0) {
-          // Home team is favorite
-          vegasLine = homeOutcome.point;
-        } else {
-          // Away team is favorite
-          vegasLine = -awayOutcome.point;
-        }
+        // Always use the home team's line for consistency
+        const line = homeOutcome.point;
+        const favorite = homeOutcome.point < 0 ? game.home_team : game.away_team;
 
         // Use game date to determine week number
         const gameDate = new Date(game.commence_time);
@@ -81,7 +106,8 @@ async function fetchOddsData(): Promise<Game[]> {
           homeLine: homeOutcome.point,
           awayTeam: game.away_team,
           awayLine: awayOutcome.point,
-          vegasLine
+          storedLine: line,
+          favorite
         });
 
         return {
@@ -90,7 +116,8 @@ async function fetchOddsData(): Promise<Game[]> {
           away_team: game.away_team,
           home_team: game.home_team,
           commence_time: game.commence_time,
-          vegas_line: vegasLine
+          vegas_line: line,
+          favorite
         };
       })
       .filter(game => game !== null)
@@ -99,30 +126,6 @@ async function fetchOddsData(): Promise<Game[]> {
     console.error('Error in fetchOddsData:', error);
     throw error;
   }
-}
-
-function getSeasonStartDate(year: number): Date {
-  let date = new Date(year, 8, 1); // September 1st
-  while (date.getDay() !== 4) { // 4 = Thursday
-    date.setDate(date.getDate() + 1);
-  }
-  return date;
-}
-
-function getCurrentWeekNumber(): string {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const seasonStart = getSeasonStartDate(currentYear);
-  
-  if (now.getMonth() < 8) {
-    seasonStart.setFullYear(currentYear - 1);
-  }
-  
-  const diffTime = now.getTime() - seasonStart.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  const weekNumber = Math.floor(diffDays / 7) + 1;
-  
-  return Math.min(Math.max(weekNumber, 1), 18).toString();
 }
 
 function generateWeeks(games: Game[]): WeekInfo[] {
