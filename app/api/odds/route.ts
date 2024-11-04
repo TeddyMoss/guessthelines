@@ -58,6 +58,8 @@ async function fetchOddsData(): Promise<Game[]> {
   const fullUrl = `${ODDS_API_URL}?apiKey=${API_KEY}&regions=us&markets=spreads`;
   
   try {
+    console.log('Attempting to fetch odds data');
+    
     const response = await fetch(fullUrl, {
       method: 'GET',
       headers: {
@@ -77,10 +79,6 @@ async function fetchOddsData(): Promise<Game[]> {
     }
 
     const data = await response.json();
-    console.log('Odds API Response:', {
-      gamesCount: data.length,
-      firstGame: data[0] ? `${data[0].away_team} vs ${data[0].home_team}` : 'No games'
-    });
 
     return data
       .filter(game => game.sport_key === 'americanfootball_nfl')
@@ -88,10 +86,20 @@ async function fetchOddsData(): Promise<Game[]> {
         const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads');
         const homeOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
         const line = homeOutcome?.point || 0;
+
+        // Use game date to determine week number
+        const gameDate = new Date(game.commence_time);
+        const yearStart = getSeasonStartDate(gameDate.getFullYear());
+        if (gameDate.getMonth() < 8) { // If before September
+          yearStart.setFullYear(yearStart.getFullYear() - 1);
+        }
+        const diffTime = gameDate.getTime() - yearStart.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const gameWeek = Math.floor(diffDays / 7) + 1;
         
         return {
           id: game.id,
-          weekNumber: getCurrentWeekNumber(), // Use current week
+          weekNumber: Math.min(Math.max(gameWeek, 1), 18).toString(),
           away_team: game.away_team,
           home_team: game.home_team,
           commence_time: game.commence_time,
@@ -124,38 +132,33 @@ function generateWeeks(games: Game[]): WeekInfo[] {
 
 export async function GET() {
   console.log('Starting /api/odds request');
+  console.log('Environment check:', {
+    hasOddsApiKey: !!process.env.ODDS_API_KEY,
+    hasAwsRegion: !!process.env.NEXT_PUBLIC_AWS_REGION,
+    hasAccessKey: !!process.env.AMPLIFY_ACCESS_KEY_ID,
+    hasSecretKey: !!process.env.AMPLIFY_SECRET_ACCESS_KEY
+  });
   
   try {
     const games = await fetchOddsData();
     const weeks = generateWeeks(games);
     const currentWeek = getCurrentWeekNumber();
 
-    console.log('API Response prepared:', {
-      gamesCount: games.length,
-      weeksCount: weeks.length,
-      currentWeek
-    });
-
     return NextResponse.json({
       games,
       weeks,
       currentWeek
     });
-  } catch (error) {
-    console.error('Error in GET handler:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    });
-
-    // Return a more graceful error response
+  } catch (error: any) {
+    console.error('Error in GET handler:', error);
+    
     return NextResponse.json({
       games: [],
-      weeks: generateWeeks([]), // Still return week structure
+      weeks: generateWeeks([]),
       currentWeek: getCurrentWeekNumber(),
       error: 'Unable to fetch game data. Please try again later.'
     }, { 
-      status: 500,
-      statusText: 'Internal Server Error'
+      status: 500
     });
   }
 }
