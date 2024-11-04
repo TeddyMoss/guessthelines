@@ -6,7 +6,8 @@ interface Game {
   away_team: string;
   home_team: string;
   commence_time: string;
-  vegas_line: number;
+  home_line: number;
+  away_line: number;
 }
 
 interface WeekInfo {
@@ -116,7 +117,8 @@ async function fetchOddsData(): Promise<Game[]> {
           away_team: game.away_team,
           home_team: game.home_team,
           commence_time: game.commence_time,
-          vegas_line: homeOutcome.point // Use home team's line
+          home_line: homeOutcome.point,
+          away_line: awayOutcome.point
         };
       })
       .filter(game => game !== null) // Remove games without FanDuel odds
