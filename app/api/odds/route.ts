@@ -81,20 +81,16 @@ async function fetchOddsData(): Promise<Game[]> {
     return data
       .filter(game => game.sport_key === 'americanfootball_nfl')
       .map(game => {
-        const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads');
+        // Find FanDuel bookmaker
+        const fanduel = game.bookmakers?.find(b => b.key === 'fanduel');
+        if (!fanduel) return null;
+
+        const spread = fanduel.markets?.find(m => m.key === 'spreads');
         const homeOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
         const awayOutcome = spread?.outcomes?.find(o => o.name === game.away_team);
-        
-        const homeLine = homeOutcome?.point || 0;
-        const line = homeLine;  // Keep the sign as is from the API
 
-        // Log the spread calculation
-        console.log('Line Calculation:', {
-          game: `${game.away_team} @ ${game.home_team}`,
-          homeTeam: game.home_team,
-          homeLine,
-          finalLine: line
-        });
+        // Skip if no valid spread data
+        if (!spread || !homeOutcome || !awayOutcome) return null;
 
         // Use game date to determine week number
         const gameDate = new Date(game.commence_time);
@@ -106,15 +102,24 @@ async function fetchOddsData(): Promise<Game[]> {
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         const gameWeek = Math.floor(diffDays / 7) + 1;
         
+        console.log('FanDuel Line:', {
+          game: `${game.away_team} @ ${game.home_team}`,
+          homeTeam: game.home_team,
+          homeLine: homeOutcome.point,
+          awayTeam: game.away_team,
+          awayLine: awayOutcome.point
+        });
+
         return {
           id: game.id,
           weekNumber: Math.min(Math.max(gameWeek, 1), 18).toString(),
           away_team: game.away_team,
           home_team: game.home_team,
           commence_time: game.commence_time,
-          vegas_line: line
+          vegas_line: homeOutcome.point // Use home team's line
         };
       })
+      .filter(game => game !== null) // Remove games without FanDuel odds
       .sort((a, b) => new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime());
   } catch (error) {
     console.error('Error in fetchOddsData:', error);
