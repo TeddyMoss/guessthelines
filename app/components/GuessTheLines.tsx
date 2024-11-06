@@ -141,13 +141,13 @@ const WeekSelector = ({
   user: any
 }) => {
   const currentDate = new Date();
+  const currentTimestamp = currentDate.getTime();
   
   return (
     <div className="flex flex-wrap justify-center gap-2">
       {weeks.map((week) => {
-        const isCurrentWeek = week === currentWeek;
-        const weekStartDate = new Date(); // You'll need to get this from your weeks data
-        const isPastWeek = weekStartDate < currentDate && !isCurrentWeek;
+        const weekStartDate = new Date(); // This should come from your data
+        const isPastWeek = weekStartDate.getTime() < currentTimestamp;
         
         if (isPastWeek && !user) return null; // Hide past weeks for non-logged-in users
         
@@ -164,16 +164,10 @@ const WeekSelector = ({
                   ? 'bg-gray-100 text-gray-400'
                   : 'bg-gray-50 text-gray-700 hover:bg-green-50'
               }
-              ${isCurrentWeek ? 'ring-2 ring-green-500' : ''}
             `}
             disabled={isPastWeek && !user}
           >
             {isNaN(parseInt(week)) ? String(week).toUpperCase() : `Week ${week}`}
-            {isCurrentWeek && (
-              <span className="ml-1 text-xs bg-green-700 text-white px-1 py-0.5 rounded">
-                Current
-              </span>
-            )}
           </button>
         );
       })}
@@ -512,8 +506,14 @@ export default function GuessTheLines() {
 
   const availableWeeks = gamesData.weeks
     .filter(week => {
-      const weekStartDate = new Date(week.startDate);
-      return weekStartDate >= new Date() || week.number === gamesData.currentWeek || user;
+      // Get the start date for the week from the games array
+      const weekGames = gamesData.games.filter(game => game.weekNumber === week.number);
+      const earliestGame = weekGames.reduce((earliest, game) => {
+        const gameTime = new Date(game.commence_time).getTime();
+        return !earliest || gameTime < earliest ? gameTime : earliest;
+      }, 0);
+      
+      return !earliestGame || earliestGame >= Date.now() || user;
     })
     .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
     .map(week => week.number);
