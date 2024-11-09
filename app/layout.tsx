@@ -1,35 +1,25 @@
-import type { Metadata } from "next";
-import localFont from "next/font/local";
-import "./globals.css";
-import AuthProvider from "./components/auth/AuthProvider";  // Changed this line
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { GoogleAnalytics } from '@next/third-parties/google'
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-});
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Guess The Lines",
-  description: "The Easiest Way to Play Along With Bill and Sal",
+  title: 'Guess The Lines',
+  description: 'The Easiest Way to Play Along With Bill and Sal',
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <AuthProvider>{children}</AuthProvider>
+      <body className={inter.className}>
+        {children}
+        <GoogleAnalytics gaId="G-5ZFXMG7FWV" />  {/* Replace with your actual GA ID */}
       </body>
     </html>
   );
