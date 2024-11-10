@@ -4,9 +4,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Script from 'next/script';
-import '../lib/authConfig';
-
-console.log('Layout loading...');
+import { AuthInitializer } from './components/auth/AuthInitializer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -20,8 +18,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  console.log('Layout rendering...');
-  
   return (
     <html lang="en">
       <head>
@@ -42,6 +38,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body className={inter.className}>
+        <AuthInitializer />
         {children}
       </body>
     </html>
