@@ -10,9 +10,11 @@
     "export": "next export"
   },
   "dependencies": {
+    "@aws-amplify/analytics": "^7.0.56",
     "@aws-sdk/client-cognito-identity": "^3.679.0",
     "@aws-sdk/client-dynamodb": "^3.682.0",
     "@aws-sdk/lib-dynamodb": "^3.682.0",
+    "@next/third-parties": "^15.0.3",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-slot": "^1.1.0",
     "@shadcn/ui": "^0.0.4",
