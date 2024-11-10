@@ -1,8 +1,12 @@
+// app/layout.tsx
+
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Script from 'next/script';
-import '../lib/authConfig';  // Import auth config
+import '../lib/authConfig';
+
+console.log('Layout loading...');
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -16,6 +20,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  console.log('Layout rendering...');
+  
   return (
     <html lang="en">
       <head>
@@ -35,7 +41,9 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        {children}
+      </body>
     </html>
   );
 }
