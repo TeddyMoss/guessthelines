@@ -1,35 +1,16 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { Amplify } from 'aws-amplify';
 import Script from 'next/script';
+import '../lib/authConfig';  // Import auth config
 
-// Initialize font
 const inter = Inter({ subsets: ['latin'] });
 
-// Metadata
 export const metadata: Metadata = {
   title: 'Guess The Lines',
   description: 'The Easiest Way to Play Along With Bill and Sal',
 };
 
-// Configure Amplify Auth
-Amplify.configure({
-  Auth: {
-    Cognito: {
-      userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!,
-      userPoolClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
-      signUpVerificationMethod: 'code',
-      loginWith: {
-        email: true,
-        phone: false,
-        username: false
-      }
-    }
-  }
-});
-
-// Root Layout Component
 export default function RootLayout({
   children,
 }: {
