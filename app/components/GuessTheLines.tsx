@@ -7,6 +7,7 @@ import { signOut, getCurrentUser } from 'aws-amplify/auth';
 import { savePicks } from '../utils/db';
 import { X } from 'lucide-react';
 import { saveUserPicks, getUserPicks } from '../../lib/dynamodb';
+import Link from 'next/link';
 
 interface Game {
   id: string;
@@ -43,7 +44,6 @@ interface GameSelection {
   gameId: string;
   team: string;
 }
-
 const GameTimeDisplay = ({ startTime }: { startTime: string }) => {
   const formattedTime = new Date(startTime).toLocaleString('en-US', {
     weekday: 'short',
@@ -77,6 +77,7 @@ const SignUpPrompt = ({ onClose, onSignUpClick }: { onClose: () => void; onSignU
     </div>
   </div>
 );
+
 const FieldBackground = () => (
   <div className="absolute top-0 left-0 w-full h-48 sm:h-56 md:h-64 bg-green-700 overflow-hidden">
     <div className="relative w-full h-full">
@@ -126,7 +127,6 @@ const CelebrationOverlay = ({ onComplete }: { onComplete: () => void }) => {
     </div>
   );
 };
-
 const WeekSelector = ({ 
   weeks, 
   selectedWeek, 
@@ -224,6 +224,7 @@ const LineInput = ({
     />
   );
 };
+
 const PredictionDisplay = ({ 
   game,
   prediction,
@@ -297,7 +298,6 @@ const PredictionDisplay = ({
     </div>
   );
 };
-
 const GameCard = ({ 
   game, 
   prediction, 
@@ -394,6 +394,7 @@ export default function GuessTheLines() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
+  // Fetch games data
   useEffect(() => {
     const fetchGames = async () => {
       try {
@@ -412,6 +413,7 @@ export default function GuessTheLines() {
     fetchGames();
   }, []);
 
+  // Enhanced auth check
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -427,16 +429,27 @@ export default function GuessTheLines() {
     };
     
     checkAuth();
+    
+    // Listen for auth state changes
+    const handleAuthChange = () => {
+      checkAuth();
+    };
+    
+    window.addEventListener('auth-state-change', handleAuthChange);
+    return () => window.removeEventListener('auth-state-change', handleAuthChange);
   }, []);
 
+  // Sign up prompt logic
   useEffect(() => {
-    if (submitted && !user) {
+    if (submitted && !user && !showAuthModal) {
       const timer = setTimeout(() => {
         setShowSignUpPrompt(true);
       }, 1000);
       return () => clearTimeout(timer);
+    } else {
+      setShowSignUpPrompt(false);
     }
-  }, [submitted, user]);
+  }, [submitted, user, showAuthModal]);
 
   const handleTeamClick = (gameId: string, team: string) => {
     if (submitted || predictions[gameId]?.locked) return;
@@ -456,7 +469,6 @@ export default function GuessTheLines() {
       new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime()
     );
   };
-
   const handleSubmit = async () => {
     setSubmitted(true);
     setShowCelebration(true);
@@ -531,13 +543,18 @@ export default function GuessTheLines() {
         />
       )}
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} initialMode="signup" />}
-      
       <div className="relative overflow-hidden">
         <FieldBackground />
         
         <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-30">
           {user ? (
             <div className="flex items-center gap-2 sm:gap-4">
+              <Link 
+                href="/history"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
+              >
+                View History
+              </Link>
               <span className="text-white text-sm sm:text-base">{user.username}</span>
               <button 
                 onClick={() => signOut()}
@@ -594,7 +611,6 @@ export default function GuessTheLines() {
               />
             ))}
           </div>
-
           {filteredGames.length > 0 && filteredGames[0].type !== 'playoff' && (
             <div className="flex justify-center pt-6">
               <button
