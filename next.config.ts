@@ -8,9 +8,6 @@ const nextConfig: NextConfig = {
     };
     return config;
   },
-  experimental: {
-    serverExternalPackages: ['aws-sdk']
-  },
   images: {
     unoptimized: true
   },
