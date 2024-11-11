@@ -4,8 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import PicksHistory from '@/app/components/picks/PicksHistory';
-import { getUserPicks } from '@/lib/dynamodb';
+import PicksHistory from '../../../components/picks/PicksHistory';
+import { getUserPicks } from '../../../lib/dynamodb';
 
 // Empty State Component
 const EmptyState = () => (
