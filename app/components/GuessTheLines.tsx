@@ -394,7 +394,6 @@ export default function GuessTheLines() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
-  // Fetch games data
   useEffect(() => {
     const fetchGames = async () => {
       try {
@@ -413,11 +412,11 @@ export default function GuessTheLines() {
     fetchGames();
   }, []);
 
-  // Enhanced auth check
   useEffect(() => {
     const checkAuth = async () => {
       try {
         const currentUser = await getCurrentUser();
+        console.log('Current user:', currentUser);
         setUser(currentUser);
         if (currentUser) {
           const userPicks = await getUserPicks(currentUser.userId);
@@ -429,17 +428,8 @@ export default function GuessTheLines() {
     };
     
     checkAuth();
-    
-    // Listen for auth state changes
-    const handleAuthChange = () => {
-      checkAuth();
-    };
-    
-    window.addEventListener('auth-state-change', handleAuthChange);
-    return () => window.removeEventListener('auth-state-change', handleAuthChange);
   }, []);
 
-  // Sign up prompt logic
   useEffect(() => {
     if (submitted && !user && !showAuthModal) {
       const timer = setTimeout(() => {
@@ -518,7 +508,6 @@ export default function GuessTheLines() {
 
   const availableWeeks = gamesData.weeks
     .filter(week => {
-      // Get the start date for the week from the games array
       const weekGames = gamesData.games.filter(game => game.weekNumber === week.number);
       const earliestGame = weekGames.reduce((earliest, game) => {
         const gameTime = new Date(game.commence_time).getTime();
@@ -555,7 +544,9 @@ export default function GuessTheLines() {
               >
                 View History
               </Link>
-              <span className="text-white text-sm sm:text-base">{user.username}</span>
+              <span className="text-white text-sm sm:text-base">
+                {user.email || user.signInDetails?.loginId || 'User'}
+              </span>
               <button 
                 onClick={() => signOut()}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
@@ -611,6 +602,7 @@ export default function GuessTheLines() {
               />
             ))}
           </div>
+
           {filteredGames.length > 0 && filteredGames[0].type !== 'playoff' && (
             <div className="flex justify-center pt-6">
               <button
