@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   experimental: {
-    serverComponentsExternalPackages: ['aws-sdk']
+    serverExternalPackages: ['aws-sdk']
   },
   images: {
     unoptimized: true
