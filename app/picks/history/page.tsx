@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import PicksHistory from '@/app/components/picks/PicksHistory';
+import PicksHistory from '../../components/picks/PicksHistory';
 
 export default function PicksHistoryPage() {
   const router = useRouter();
