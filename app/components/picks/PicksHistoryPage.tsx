@@ -1,53 +1,85 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { getUserPicks } from '@/lib/dynamodb';
+import { useState, useEffect } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
-import { useRouter } from 'next/navigation';
+import { getUserPicks, getUserStats } from '@/lib/dynamodb';
 
-interface Props {
-  userId: string;
-  currentWeek: string;
-}
-
-export default function PicksHistory({ userId, currentWeek }: Props) {
-  const [loading, setLoading] = useState(true);
+export default function PicksHistoryPage() {
   const [picks, setPicks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const loadPicks = async () => {
+    async function loadData() {
       try {
-        const userPicks = await getUserPicks(userId);
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+
+        if (!currentUser?.userId) {
+          throw new Error('Please log in to view your picks');
+        }
+
+        const userPicks = await getUserPicks(currentUser.userId);
         setPicks(userPicks);
-      } catch (error) {
-        console.error('Error loading picks:', error);
+      } catch (err) {
+        console.error('Error loading picks:', err);
+        setError(err.message || 'Failed to load picks');
       } finally {
         setLoading(false);
       }
-    };
+    }
 
-    loadPicks();
-  }, [userId]);
+    loadData();
+  }, []);
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center p-8">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-600 border-t-transparent" />
-      </div>
-    );
+    return <div className="p-4">Loading your picks history...</div>;
+  }
+
+  if (error) {
+    return <div className="p-4 text-red-600">{error}</div>;
+  }
+
+  if (!user) {
+    return <div className="p-4">Please log in to view your picks history.</div>;
   }
 
   return (
-    <div className="space-y-4">
-      {picks.map((pick: any) => (
-        <div key={pick.gameId} className="bg-white rounded-lg shadow p-4">
-          <div className="flex justify-between items-center">
-            <div>{pick.team}</div>
-            <div>Line: {pick.line}</div>
-            <div>Actual: {pick.actualLine}</div>
-          </div>
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Your Pick History</h1>
+      {picks.length === 0 ? (
+        <p>No picks found. Make some picks to see them here!</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white">
+            <thead>
+              <tr>
+                <th className="px-4 py-2 text-left">Week</th>
+                <th className="px-4 py-2 text-left">Team</th>
+                <th className="px-4 py-2 text-right">Your Line</th>
+                <th className="px-4 py-2 text-right">Actual Line</th>
+                <th className="px-4 py-2 text-right">Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {picks.map((pick, index) => (
+                <tr key={index} className="border-t">
+                  <td className="px-4 py-2">Week {pick.week}</td>
+                  <td className="px-4 py-2">{pick.team}</td>
+                  <td className="px-4 py-2 text-right">{pick.predictedLine}</td>
+                  <td className="px-4 py-2 text-right">{pick.actualLine || 'TBD'}</td>
+                  <td className="px-4 py-2 text-right">
+                    {pick.actualLine 
+                      ? Math.abs(pick.predictedLine - pick.actualLine).toFixed(1) 
+                      : 'TBD'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ))}
+      )}
     </div>
   );
 }
