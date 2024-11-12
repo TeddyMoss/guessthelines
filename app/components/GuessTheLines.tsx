@@ -460,13 +460,14 @@ export default function GuessTheLines() {
     );
   };
 
-  const handleSubmit = async () => {
+  // In your GuessTheLines.tsx, update the handleSubmit function
+
+const handleSubmit = async () => {
   setSubmitted(true);
   setShowCelebration(true);
   setSelectedGame(null);
 
   if (!user?.userId) {
-    console.error('No user ID available');
     setSaveMessage({ type: 'error', text: 'Please log in to save picks' });
     return;
   }
@@ -479,29 +480,44 @@ export default function GuessTheLines() {
       gamesData
     });
 
+    // Validate predictions
     if (!predictions || Object.keys(predictions).length === 0) {
       throw new Error('No predictions to save');
     }
 
+    // Validate games data
     if (!gamesData?.games) {
       throw new Error('Games data not available');
     }
 
-    const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => ({
-      userId: user.userId,
-      gameId,
-      team: prediction.team,
-      predictedLine: prediction.line,
-      actualLine: gamesData.games.find(g => g.id === gameId)?.vegas_line,
-      week: selectedWeek,
-      timestamp: new Date().toISOString()
-    }));
+    // Format picks
+    const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => {
+      const game = gamesData.games.find(g => g.id === gameId);
+      if (!game) {
+        throw new Error(`Game not found: ${gameId}`);
+      }
+
+      return {
+        userId: user.userId,
+        gameId,
+        team: prediction.team,
+        predictedLine: prediction.line,
+        actualLine: game.vegas_line,
+        week: selectedWeek,
+        timestamp: new Date().toISOString()
+      };
+    });
 
     console.log('Picks formatted for save:', picksToSave);
 
-    await saveUserPicks(user.userId, selectedWeek, picksToSave);
+    // Save picks
+    const result = await saveUserPicks(user.userId, selectedWeek, picksToSave);
     
-    setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
+    if (result.success) {
+      setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
+    } else {
+      throw new Error('Failed to save picks');
+    }
   } catch (error) {
     console.error('Error saving picks:', {
       error,
@@ -511,7 +527,10 @@ export default function GuessTheLines() {
       gamesDataExists: !!gamesData,
       gamesExist: !!gamesData?.games
     });
-    setSaveMessage({ type: 'error', text: 'Failed to save picks. Please try again.' });
+    setSaveMessage({ 
+      type: 'error', 
+      text: error instanceof Error ? error.message : 'Failed to save picks. Please try again.' 
+    });
   }
 };
   const resetPredictions = () => {

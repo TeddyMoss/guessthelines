@@ -1,7 +1,6 @@
 // lib/dynamodb.ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { fromCognitoIdentityPool } from '@aws-sdk/credential-providers';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 interface UserPick {
@@ -31,22 +30,20 @@ interface UserStats {
 
 const getDocClient = async () => {
   try {
-    const session = await fetchAuthSession();
-    const idToken = session.tokens?.idToken?.toString();
+    // Get Cognito credentials
+    const { credentials } = await fetchAuthSession();
     
-    if (!idToken) {
-      throw new Error('Authentication required. Please log in again.');
+    if (!credentials) {
+      throw new Error('No credentials available');
     }
 
     const client = new DynamoDBClient({
       region: process.env.NEXT_PUBLIC_AWS_REGION,
-      credentials: fromCognitoIdentityPool({
-        clientConfig: { region: process.env.NEXT_PUBLIC_AWS_REGION },
-        identityPoolId: process.env.NEXT_PUBLIC_IDENTITY_POOL_ID!,
-        logins: {
-          [`cognito-idp.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${process.env.NEXT_PUBLIC_USER_POOL_ID}`]: idToken
-        }
-      })
+      credentials: {
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+        sessionToken: credentials.sessionToken
+      }
     });
 
     return DynamoDBDocumentClient.from(client, {
@@ -55,18 +52,25 @@ const getDocClient = async () => {
       }
     });
   } catch (error) {
-    console.error('Error getting auth credentials:', error);
-    throw new Error('Failed to authenticate with DynamoDB');
+    console.error('Error getting DynamoDB client:', error);
+    throw error;
   }
 };
 
+// Check if line prediction was accurate (within 3 points)
 const isAccuratePick = (predicted: number, actual: number) => Math.abs(predicted - actual) <= 3;
+
+// Check if line prediction was perfect
 const isPerfectPick = (predicted: number, actual: number) => Math.abs(predicted - actual) <= 0.5;
 
-// Renamed to match the import in GuessTheLines.tsx
-export const savePicks = async (userId: string, week: string, picks: UserPick[]) => {
+export async function saveUserPicks(userId: string, week: string, picks: UserPick[]) {
   try {
     const docClient = await getDocClient();
+    
+    // Validate picks data
+    if (!Array.isArray(picks) || picks.length === 0) {
+      throw new Error('Invalid picks data');
+    }
 
     // First, save individual picks
     const savePicksPromises = picks.map(pick => 
@@ -137,7 +141,7 @@ export const savePicks = async (userId: string, week: string, picks: UserPick[])
     console.error('Error saving picks:', error);
     throw error;
   }
-};
+}
 
 export async function getUserPicks(userId: string, week?: string) {
   try {
@@ -178,6 +182,3 @@ export async function getUserStats(userId: string) {
     throw error;
   }
 }
-
-// Also export the original name for backward compatibility
-export const saveUserPicks = savePicks;
