@@ -463,16 +463,37 @@ export default function GuessTheLines() {
     setSubmitted(true);
     setShowCelebration(true);
     setSelectedGame(null);
-
+  
     if (user) {
       try {
-        const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => ({
-          gameId,
-          team: prediction.team,
-          line: prediction.line,
-          actualLine: gamesData.games.find(g => g.id === gameId)?.vegas_line
-        }));
-
+        console.log('Starting save with:', {
+          predictions,
+          user,
+          selectedWeek,
+          gamesData
+        });
+  
+        if (!predictions || Object.keys(predictions).length === 0) {
+          throw new Error('No predictions to save');
+        }
+  
+        const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => {
+          const game = gamesData.games.find(g => g.id === gameId);
+          if (!game) {
+            console.error('Game not found:', gameId);
+            throw new Error(`Game not found: ${gameId}`);
+          }
+  
+          return {
+            gameId,
+            team: prediction.team,
+            line: prediction.line,
+            actualLine: game.vegas_line
+          };
+        });
+  
+        console.log('Picks formatted for save:', picksToSave);
+  
         await Promise.all([
           savePicks(user.userId, selectedWeek, picksToSave),
           saveUserPicks(user.userId, picksToSave)
@@ -480,7 +501,14 @@ export default function GuessTheLines() {
         
         setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
       } catch (error) {
-        console.error('Error saving picks:', error);
+        console.error('Error saving picks:', {
+          error,
+          predictions,
+          user,
+          selectedWeek,
+          gamesDataExists: !!gamesData,
+          gamesExist: !!gamesData?.games
+        });
         setSaveMessage({ type: 'error', text: 'Failed to save picks. Please try again.' });
       }
     }
