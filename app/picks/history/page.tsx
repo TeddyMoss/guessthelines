@@ -5,8 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUser, type AuthUser } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import UserHistory from '@/components/picks/UserHistory';
-import { Alert, AlertDescription } from "@/components/ui/alert";
+// Updated import path based on your project structure
+import UserHistory from '../../../components/picks/UserHistory';
 
 interface AuthUserWithId extends AuthUser {
   userId: string;
@@ -32,7 +32,6 @@ export default function PicksHistoryPage() {
       } catch (err) {
         console.error('Auth error:', err);
         setError('Please log in to view your pick history');
-        // Don't immediately redirect - show error message first
         setTimeout(() => router.push('/'), 3000);
       } finally {
         setLoading(false);
@@ -57,9 +56,9 @@ export default function PicksHistoryPage() {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {error}
+          </div>
           <p className="mt-4 text-center text-gray-600">
             Redirecting to home page...
           </p>
