@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import UserHistory from '../../../components/picks/UserHistory';
+import UserHistory from '@/app/components/picks/UserHistory';
 
 interface User {
   userId: string;
