@@ -1,7 +1,8 @@
 // lib/dynamodb.ts
-
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { fromCognitoIdentityPool } from '@aws-sdk/credential-providers';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
 interface UserPick {
   userId: string;
@@ -28,28 +29,45 @@ interface UserStats {
   }
 }
 
-const client = new DynamoDBClient({
-  region: process.env.NEXT_PUBLIC_AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AMPLIFY_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AMPLIFY_SECRET_ACCESS_KEY!
-  }
-});
+const getDocClient = async () => {
+  try {
+    const session = await fetchAuthSession();
+    const idToken = session.tokens?.idToken?.toString();
+    
+    if (!idToken) {
+      throw new Error('Authentication required. Please log in again.');
+    }
 
-const docClient = DynamoDBDocumentClient.from(client, {
-  marshallOptions: {
-    removeUndefinedValues: true
-  }
-});
+    const client = new DynamoDBClient({
+      region: process.env.NEXT_PUBLIC_AWS_REGION,
+      credentials: fromCognitoIdentityPool({
+        clientConfig: { region: process.env.NEXT_PUBLIC_AWS_REGION },
+        identityPoolId: process.env.NEXT_PUBLIC_IDENTITY_POOL_ID!,
+        logins: {
+          [`cognito-idp.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${process.env.NEXT_PUBLIC_USER_POOL_ID}`]: idToken
+        }
+      })
+    });
 
-// Check if line prediction was accurate (within 3 points)
+    return DynamoDBDocumentClient.from(client, {
+      marshallOptions: {
+        removeUndefinedValues: true
+      }
+    });
+  } catch (error) {
+    console.error('Error getting auth credentials:', error);
+    throw new Error('Failed to authenticate with DynamoDB');
+  }
+};
+
 const isAccuratePick = (predicted: number, actual: number) => Math.abs(predicted - actual) <= 3;
-
-// Check if line prediction was perfect
 const isPerfectPick = (predicted: number, actual: number) => Math.abs(predicted - actual) <= 0.5;
 
-export async function saveUserPicks(userId: string, week: string, picks: UserPick[]) {
+// Renamed to match the import in GuessTheLines.tsx
+export const savePicks = async (userId: string, week: string, picks: UserPick[]) => {
   try {
+    const docClient = await getDocClient();
+
     // First, save individual picks
     const savePicksPromises = picks.map(pick => 
       docClient.send(new PutCommand({
@@ -117,12 +135,14 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
     return { success: true };
   } catch (error) {
     console.error('Error saving picks:', error);
-    return { success: false, error: 'Failed to save picks' };
+    throw error;
   }
-}
+};
 
 export async function getUserPicks(userId: string, week?: string) {
   try {
+    const docClient = await getDocClient();
+    
     let queryParams: any = {
       TableName: 'UserPicks',
       KeyConditionExpression: 'userId = :userId',
@@ -140,12 +160,14 @@ export async function getUserPicks(userId: string, week?: string) {
     return result.Items || [];
   } catch (error) {
     console.error('Error fetching picks:', error);
-    return [];
+    throw error;
   }
 }
 
 export async function getUserStats(userId: string) {
   try {
+    const docClient = await getDocClient();
+    
     const result = await docClient.send(new GetCommand({
       TableName: 'UserStats',
       Key: { userId }
@@ -153,6 +175,9 @@ export async function getUserStats(userId: string) {
     return result.Item as UserStats || null;
   } catch (error) {
     console.error('Error fetching user stats:', error);
-    return null;
+    throw error;
   }
 }
+
+// Also export the original name for backward compatibility
+export const saveUserPicks = savePicks;

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { AuthModal } from './auth/AuthModal';
 import { signOut, getCurrentUser } from 'aws-amplify/auth';
-import { savePicks } from '../utils/db';
+import { savePicks } from '../../lib/dynamodb';
 import { X } from 'lucide-react';
 import { saveUserPicks, getUserPicks } from '../../lib/dynamodb';
 import Link from 'next/link';
@@ -460,57 +460,73 @@ export default function GuessTheLines() {
     );
   };
   const handleSubmit = async () => {
+    // Preserve existing UI state management
     setSubmitted(true);
     setShowCelebration(true);
     setSelectedGame(null);
   
-    if (user) {
-      try {
-        console.log('Starting save with:', {
-          predictions,
-          user,
-          selectedWeek,
-          gamesData
-        });
+    if (!user) {
+      setSaveMessage({ type: 'error', text: 'Please log in to save picks' });
+      return;
+    }
   
-        if (!predictions || Object.keys(predictions).length === 0) {
-          throw new Error('No predictions to save');
+    try {
+      console.log('Starting save with:', {
+        predictions,
+        user,
+        selectedWeek,
+        gamesDataExists: !!gamesData,
+        gamesExist: !!gamesData?.games
+      });
+  
+      // Validate predictions exist
+      if (!predictions || Object.keys(predictions).length === 0) {
+        throw new Error('No predictions to save');
+      }
+  
+      // Validate games data
+      if (!gamesData?.games) {
+        throw new Error('Game data not available');
+      }
+  
+      // Format picks with validation
+      const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => {
+        const game = gamesData.games.find(g => g.id === gameId);
+        if (!game) {
+          console.error('Game not found:', gameId);
+          throw new Error(`Game not found: ${gameId}`);
         }
   
-        const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => {
-          const game = gamesData.games.find(g => g.id === gameId);
-          if (!game) {
-            console.error('Game not found:', gameId);
-            throw new Error(`Game not found: ${gameId}`);
-          }
+        return {
+          gameId,
+          team: prediction.team,
+          line: prediction.line,
+          actualLine: game.vegas_line
+        };
+      });
   
-          return {
-            gameId,
-            team: prediction.team,
-            line: prediction.line,
-            actualLine: game.vegas_line
-          };
-        });
+      console.log('Picks formatted for save:', picksToSave);
   
-        console.log('Picks formatted for save:', picksToSave);
-  
-        await Promise.all([
-          savePicks(user.userId, selectedWeek, picksToSave),
-          saveUserPicks(user.userId, picksToSave)
-        ]);
-        
-        setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
-      } catch (error) {
-        console.error('Error saving picks:', {
-          error,
-          predictions,
-          user,
-          selectedWeek,
-          gamesDataExists: !!gamesData,
-          gamesExist: !!gamesData?.games
-        });
-        setSaveMessage({ type: 'error', text: 'Failed to save picks. Please try again.' });
-      }
+      // Save picks using the updated db.ts function
+      await savePicks(user.userId, selectedWeek, picksToSave);
+      
+      setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
+    } catch (error) {
+      console.error('Error saving picks:', {
+        error,
+        predictions,
+        user,
+        selectedWeek,
+        gamesDataExists: !!gamesData,
+        gamesExist: !!gamesData?.games
+      });
+      
+      // Provide more specific error messages
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to save picks. Please try again.';
+      
+      setSaveMessage({ type: 'error', text: errorMessage });
     }
   };
 
