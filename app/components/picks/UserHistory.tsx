@@ -1,150 +1,98 @@
-// app/components/picks/UserHistory.tsx
+// app/picks/history/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getCurrentUser } from 'aws-amplify/auth';
-import { getUserPicks, getUserStats } from '@/lib/dynamodb';
+import React, { useState, useEffect } from 'react';
+import { getCurrentUser, type AuthUser } from 'aws-amplify/auth';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+// Fixed import path to match your project structure
+import UserHistory from '@/app/components/picks/UserHistory';
 
-interface Pick {
-  week: string;
-  team: string;
-  predictedLine: number;
-  actualLine: number;
-  timestamp: string;
+interface AuthUserWithId extends AuthUser {
+  userId: string;
 }
 
-interface UserStats {
-  totalPicks: number;
-  accurateGuesses: number;
-  perfectGuesses: number;
-  averageDeviation: number;
-  weeklyStats: Record<string, {
-    picks: number;
-    accurate: number;
-    perfect: number;
-  }>;
-}
-
-export default function UserHistory() {
-  const [picks, setPicks] = useState<Pick[]>([]);
-  const [stats, setStats] = useState<UserStats | null>(null);
+export default function PicksHistoryPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<AuthUserWithId | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadUserData() {
+    const checkAuth = async () => {
       try {
         setLoading(true);
-        const { userId } = await getCurrentUser();
+        const currentUser = await getCurrentUser();
         
-        if (!userId) {
-          throw new Error('Please log in to view your pick history');
+        if (!currentUser.userId) {
+          throw new Error('User ID not found');
         }
-
-        const [userPicks, userStats] = await Promise.all([
-          getUserPicks(userId),
-          getUserStats(userId)
-        ]);
-
-        setPicks(userPicks);
-        setStats(userStats);
-      } catch (error) {
-        console.error('Error loading user data:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load pick history');
+        
+        setUser(currentUser as AuthUserWithId);
+      } catch (err) {
+        console.error('Auth error:', err);
+        setError('Please log in to view your pick history');
+        setTimeout(() => router.push('/'), 3000);
       } finally {
         setLoading(false);
       }
-    }
+    };
 
-    loadUserData();
-  }, []);
+    checkAuth();
+  }, [router]);
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center p-8">
-        <div className="animate-pulse">Loading your picks...</div>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-600 border-t-transparent" />
+          <p className="text-gray-600">Loading your pick history...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-        {error}
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {error}
+          </div>
+          <p className="mt-4 text-center text-gray-600">
+            Redirecting to home page...
+          </p>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Stats Summary */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-gray-500">Total Picks</h3>
-            <p className="text-2xl font-bold">{stats.totalPicks}</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-gray-500">Accurate Guesses</h3>
-            <p className="text-2xl font-bold">
-              {((stats.accurateGuesses / stats.totalPicks) * 100).toFixed(1)}%
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-gray-500">Perfect Guesses</h3>
-            <p className="text-2xl font-bold">
-              {((stats.perfectGuesses / stats.totalPicks) * 100).toFixed(1)}%
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-sm font-medium text-gray-500">Avg Deviation</h3>
-            <p className="text-2xl font-bold">{stats.averageDeviation.toFixed(1)}</p>
-          </div>
-        </div>
-      )}
+  if (!user) {
+    return null;
+  }
 
-      {/* Picks History */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-4 py-2 text-left">Week</th>
-              <th className="px-4 py-2 text-left">Team</th>
-              <th className="px-4 py-2 text-right">Your Line</th>
-              <th className="px-4 py-2 text-right">Actual Line</th>
-              <th className="px-4 py-2 text-right">Deviation</th>
-              <th className="px-4 py-2 text-center">Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {picks.map((pick, index) => (
-              <tr key={index} className="border-t">
-                <td className="px-4 py-2">Week {pick.week}</td>
-                <td className="px-4 py-2">{pick.team}</td>
-                <td className="px-4 py-2 text-right">{pick.predictedLine}</td>
-                <td className="px-4 py-2 text-right">{pick.actualLine}</td>
-                <td className="px-4 py-2 text-right">
-                  {Math.abs(pick.predictedLine - pick.actualLine).toFixed(1)}
-                </td>
-                <td className="px-4 py-2 text-center">
-                  <span className={`inline-block px-2 py-1 rounded ${
-                    Math.abs(pick.predictedLine - pick.actualLine) <= 0.5 
-                      ? 'bg-green-100 text-green-800' 
-                      : Math.abs(pick.predictedLine - pick.actualLine) <= 3
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {Math.abs(pick.predictedLine - pick.actualLine) <= 0.5 
-                      ? 'PERFECT'
-                      : Math.abs(pick.predictedLine - pick.actualLine) <= 3
-                      ? 'CLOSE'
-                      : 'OFF'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  return (
+    <div className="min-h-screen bg-gray-100 py-8">
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Pick History</h1>
+            <p className="text-gray-600 mt-1">
+              View and analyze your previous picks
+            </p>
+          </div>
+          
+          <Link 
+            href="/"
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Back to Picks
+          </Link>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-sm">
+          <UserHistory userId={user.userId} />
+        </div>
       </div>
     </div>
   );
