@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import PicksHistory from '../../components/picks/PicksHistory';
+import UserHistory from '../../../components/picks/UserHistory';
 
 export default function PicksHistoryPage() {
   const router = useRouter();
@@ -52,9 +52,8 @@ export default function PicksHistoryPage() {
           </Link>
         </div>
         
-        <PicksHistory 
+        <UserHistory 
           userId={user.userId} 
-          currentWeek={new Date().getFullYear().toString()}
         />
       </div>
     </div>
