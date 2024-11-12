@@ -5,8 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUser, type AuthUser } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-// Fixed import path to match your project structure
-import UserHistory from '@/app/components/picks/UserHistory';
+// Fixed import path relative to app directory
+import UserHistory from '../../components/picks/UserHistory';
 
 interface AuthUserWithId extends AuthUser {
   userId: string;
