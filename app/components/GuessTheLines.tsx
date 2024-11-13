@@ -586,7 +586,7 @@ const handleSubmit = async () => {
           {user ? (
             <div className="flex items-center gap-2 sm:gap-4">
               <Link 
-                href="/history"
+                href="picks/history"
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
               >
                 View History
