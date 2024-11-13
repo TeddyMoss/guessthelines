@@ -595,11 +595,20 @@ const handleSubmit = async () => {
                 {user.email || user.signInDetails?.loginId || 'User'}
               </span>
               <button 
-                onClick={() => signOut()}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
-              >
-                Sign Out
-              </button>
+  onClick={async () => {
+    try {
+      await signOut({ global: true });
+      setUser(null);
+      localStorage.clear();
+      window.location.reload();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  }}
+  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
+>
+  Sign Out
+</button>
             </div>
           ) : (
             <button 
