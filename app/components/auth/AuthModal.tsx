@@ -1,7 +1,7 @@
 // app/components/auth/AuthModal.tsx
 
 import { useState } from 'react';
-import { signIn, signUp, confirmSignUp, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
+import { signIn, signUp, confirmSignUp, resetPassword, confirmResetPassword, signOut } from 'aws-amplify/auth';
 
 type AuthMode = 'signin' | 'signup' | 'confirm' | 'forgot' | 'reset';
 
@@ -19,6 +19,16 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
     setError('');
     
     try {
+      // First try to sign out any existing session
+      try {
+        await signOut({ global: true });
+        localStorage.clear();
+      } catch (signOutError) {
+        // Ignore signOut errors as there might not be an existing session
+        console.log('No existing session to clear');
+      }
+
+      // Then attempt to sign in
       await signIn({ username: email, password });
       onClose();
     } catch (err: any) {
@@ -63,6 +73,15 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
         username: email,
         confirmationCode: code
       });
+      
+      // Add pre-sign-in cleanup
+      try {
+        await signOut({ global: true });
+        localStorage.clear();
+      } catch (signOutError) {
+        console.log('No existing session to clear');
+      }
+
       await signIn({ username: email, password });
       onClose();
     } catch (err: any) {
@@ -108,7 +127,6 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
       setLoading(false);
     }
   };
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-md w-full p-6">
@@ -165,7 +183,6 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
                 />
               </div>
             )}
-
             {(mode === 'confirm' || mode === 'reset') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -216,7 +233,6 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
               </div>
             </>
           )}
-
           {mode === 'signup' && (
             <div>
               Already have an account?{' '}
