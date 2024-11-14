@@ -1,11 +1,12 @@
 // app/components/auth/AuthModal.tsx
-
 import { useState } from 'react';
 import { signIn, signUp, confirmSignUp, resetPassword, confirmResetPassword, signOut } from 'aws-amplify/auth';
+import { useAuth } from './AuthProvider';
 
 type AuthMode = 'signin' | 'signup' | 'confirm' | 'forgot' | 'reset';
 
 export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => void; initialMode?: AuthMode }) {
+  const { refreshUser } = useAuth();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,6 +31,7 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
 
       // Then attempt to sign in
       await signIn({ username: email, password });
+      await refreshUser();
       onClose();
     } catch (err: any) {
       console.error('Error signing in:', err);
@@ -83,6 +85,7 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
       }
 
       await signIn({ username: email, password });
+      await refreshUser();
       onClose();
     } catch (err: any) {
       console.error('Error confirming sign up:', err);
@@ -127,6 +130,7 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
       setLoading(false);
     }
   };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-md w-full p-6">
@@ -183,6 +187,7 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
                 />
               </div>
             )}
+
             {(mode === 'confirm' || mode === 'reset') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
