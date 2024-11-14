@@ -30,20 +30,15 @@ interface UserStats {
 
 const getDocClient = async () => {
   try {
-    // Get Cognito credentials
-    const { credentials } = await fetchAuthSession();
+    const session = await fetchAuthSession();
     
-    if (!credentials) {
-      throw new Error('No credentials available');
+    if (!session?.credentials) {
+      throw new Error('No valid authentication session');
     }
 
     const client = new DynamoDBClient({
       region: process.env.NEXT_PUBLIC_AWS_REGION,
-      credentials: {
-        accessKeyId: credentials.accessKeyId,
-        secretAccessKey: credentials.secretAccessKey,
-        sessionToken: credentials.sessionToken
-      }
+      credentials: session.credentials
     });
 
     return DynamoDBDocumentClient.from(client, {
@@ -53,7 +48,7 @@ const getDocClient = async () => {
     });
   } catch (error) {
     console.error('Error getting DynamoDB client:', error);
-    throw error;
+    throw new Error('Failed to initialize database connection. Please log in again.');
   }
 };
 
@@ -64,6 +59,10 @@ const isAccuratePick = (predicted: number, actual: number) => Math.abs(predicted
 const isPerfectPick = (predicted: number, actual: number) => Math.abs(predicted - actual) <= 0.5;
 
 export async function saveUserPicks(userId: string, week: string, picks: UserPick[]) {
+  if (!userId || !week || !picks) {
+    throw new Error('Missing required parameters for saving picks');
+  }
+
   try {
     const docClient = await getDocClient();
     
@@ -139,11 +138,18 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
     return { success: true };
   } catch (error) {
     console.error('Error saving picks:', error);
-    throw error;
+    if (error instanceof Error && error.message.includes('Failed to initialize database')) {
+      throw error;
+    }
+    throw new Error('Failed to save picks. Please try again.');
   }
 }
 
 export async function getUserPicks(userId: string, week?: string) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+
   try {
     const docClient = await getDocClient();
     
@@ -164,11 +170,18 @@ export async function getUserPicks(userId: string, week?: string) {
     return result.Items || [];
   } catch (error) {
     console.error('Error fetching picks:', error);
-    throw error;
+    if (error instanceof Error && error.message.includes('Failed to initialize database')) {
+      throw error;
+    }
+    throw new Error('Failed to fetch picks. Please try again.');
   }
 }
 
 export async function getUserStats(userId: string) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+
   try {
     const docClient = await getDocClient();
     
@@ -179,6 +192,9 @@ export async function getUserStats(userId: string) {
     return result.Item as UserStats || null;
   } catch (error) {
     console.error('Error fetching user stats:', error);
-    throw error;
+    if (error instanceof Error && error.message.includes('Failed to initialize database')) {
+      throw error;
+    }
+    throw new Error('Failed to fetch user stats. Please try again.');
   }
 }
