@@ -412,23 +412,47 @@ export default function GuessTheLines() {
     fetchGames();
   }, []);
 
-  useEffect(() => {
-    const checkAuth = async () => {
+  // In GuessTheLines.tsx, update the auth check useEffect
+useEffect(() => {
+  const checkAuth = async () => {
+    try {
+      // Clear any stale state first
+      const clearState = async () => {
+        setUser(null);
+        localStorage.clear();
+        try {
+          await signOut({ global: true });
+        } catch (e) {
+          console.log('No session to clear');
+        }
+      };
+
       try {
         const currentUser = await getCurrentUser();
         console.log('Current user:', currentUser);
         setUser(currentUser);
         if (currentUser) {
-          const userPicks = await getUserPicks(currentUser.userId);
-          console.log('User picks loaded:', userPicks);
+          try {
+            const userPicks = await getUserPicks(currentUser.userId);
+            console.log('User picks loaded:', userPicks);
+          } catch (error) {
+            console.error('Error loading picks:', error);
+            // If we can't get picks, clear auth state
+            await clearState();
+          }
         }
       } catch (err) {
-        setUser(null);
+        console.error('Auth check error:', err);
+        await clearState();
       }
-    };
-    
-    checkAuth();
-  }, []);
+    } catch (mainErr) {
+      console.error('Main auth error:', mainErr);
+      setUser(null);
+    }
+  };
+  
+  checkAuth();
+}, []);
 
   useEffect(() => {
     if (submitted && !user && !showAuthModal) {
@@ -595,8 +619,8 @@ const handleSubmit = async () => {
                 {user.email || user.signInDetails?.loginId || 'User'}
               </span>
               <button 
-  onClick={async () => {
-    try {
+                onClick={async () => {
+                try {
       await signOut({ global: true });
       setUser(null);
       localStorage.clear();
