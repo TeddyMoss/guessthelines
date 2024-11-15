@@ -1,10 +1,10 @@
 // app/layout.tsx
-
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Script from 'next/script';
 import { AuthInitializer } from './components/auth/AuthInitializer';
+import AuthProvider from './components/auth/AuthProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -38,8 +38,10 @@ export default function RootLayout({
         </Script>
       </head>
       <body className={inter.className}>
-        <AuthInitializer />
-        {children}
+        <AuthProvider>
+          <AuthInitializer />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

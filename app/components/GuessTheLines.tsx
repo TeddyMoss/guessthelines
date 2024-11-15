@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { AuthModal } from './auth/AuthModal';
-import { signOut, getCurrentUser } from 'aws-amplify/auth';
+import { signOut } from 'aws-amplify/auth';
 import { savePicks } from '../../lib/dynamodb';
 import { X } from 'lucide-react';
 import { saveUserPicks, getUserPicks } from '../../lib/dynamodb';
 import Link from 'next/link';
+import { useAuth } from './auth/AuthProvider';
 
 interface Game {
   id: string;
@@ -224,7 +225,6 @@ const LineInput = ({
     />
   );
 };
-
 const PredictionDisplay = ({ 
   game,
   prediction,
@@ -298,6 +298,7 @@ const PredictionDisplay = ({
     </div>
   );
 };
+
 const GameCard = ({ 
   game, 
   prediction, 
@@ -378,12 +379,12 @@ const GameCard = ({
   </div>
 );
 export default function GuessTheLines() {
+  const { user, loading: authLoading, refreshUser } = useAuth();
   const [gamesData, setGamesData] = useState<GamesData>({
     games: [],
     weeks: [],
     currentWeek: ''
   });
-  const [user, setUser] = useState<any>(null);
   const [selectedWeek, setSelectedWeek] = useState<string>('8');
   const [loading, setLoading] = useState(true);
   const [predictions, setPredictions] = useState<Prediction>({});
@@ -412,48 +413,6 @@ export default function GuessTheLines() {
     fetchGames();
   }, []);
 
-  // In GuessTheLines.tsx, update the auth check useEffect
-useEffect(() => {
-  const checkAuth = async () => {
-    try {
-      // Clear any stale state first
-      const clearState = async () => {
-        setUser(null);
-        localStorage.clear();
-        try {
-          await signOut({ global: true });
-        } catch (e) {
-          console.log('No session to clear');
-        }
-      };
-
-      try {
-        const currentUser = await getCurrentUser();
-        console.log('Current user:', currentUser);
-        setUser(currentUser);
-        if (currentUser) {
-          try {
-            const userPicks = await getUserPicks(currentUser.userId);
-            console.log('User picks loaded:', userPicks);
-          } catch (error) {
-            console.error('Error loading picks:', error);
-            // If we can't get picks, clear auth state
-            await clearState();
-          }
-        }
-      } catch (err) {
-        console.error('Auth check error:', err);
-        await clearState();
-      }
-    } catch (mainErr) {
-      console.error('Main auth error:', mainErr);
-      setUser(null);
-    }
-  };
-  
-  checkAuth();
-}, []);
-
   useEffect(() => {
     if (submitted && !user && !showAuthModal) {
       const timer = setTimeout(() => {
@@ -478,85 +437,90 @@ useEffect(() => {
     }));
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut({ global: true });
+      await refreshUser();
+      localStorage.clear();
+      window.location.reload();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   const sortGamesByStartTime = (games: Game[]) => {
     return [...games].sort((a, b) => 
       new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime()
     );
   };
+  const handleSubmit = async () => {
+    setSubmitted(true);
+    setShowCelebration(true);
+    setSelectedGame(null);
 
-  // In your GuessTheLines.tsx, update the handleSubmit function
-
-const handleSubmit = async () => {
-  setSubmitted(true);
-  setShowCelebration(true);
-  setSelectedGame(null);
-
-  if (!user?.userId) {
-    setSaveMessage({ type: 'error', text: 'Please log in to save picks' });
-    return;
-  }
-
-  try {
-    console.log('Starting save with:', {
-      predictions,
-      user,
-      selectedWeek,
-      gamesData
-    });
-
-    // Validate predictions
-    if (!predictions || Object.keys(predictions).length === 0) {
-      throw new Error('No predictions to save');
+    if (!user?.userId) {
+      setSaveMessage({ type: 'error', text: 'Please log in to save picks' });
+      return;
     }
 
-    // Validate games data
-    if (!gamesData?.games) {
-      throw new Error('Games data not available');
-    }
+    try {
+      console.log('Starting save with:', {
+        predictions,
+        user,
+        selectedWeek,
+        gamesData
+      });
 
-    // Format picks
-    const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => {
-      const game = gamesData.games.find(g => g.id === gameId);
-      if (!game) {
-        throw new Error(`Game not found: ${gameId}`);
+      if (!predictions || Object.keys(predictions).length === 0) {
+        throw new Error('No predictions to save');
       }
 
-      return {
-        userId: user.userId,
-        gameId,
-        team: prediction.team,
-        predictedLine: prediction.line,
-        actualLine: game.vegas_line,
-        week: selectedWeek,
-        timestamp: new Date().toISOString()
-      };
-    });
+      if (!gamesData?.games) {
+        throw new Error('Games data not available');
+      }
 
-    console.log('Picks formatted for save:', picksToSave);
+      const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => {
+        const game = gamesData.games.find(g => g.id === gameId);
+        if (!game) {
+          throw new Error(`Game not found: ${gameId}`);
+        }
 
-    // Save picks
-    const result = await saveUserPicks(user.userId, selectedWeek, picksToSave);
-    
-    if (result.success) {
-      setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
-    } else {
-      throw new Error('Failed to save picks');
+        return {
+          userId: user.userId,
+          gameId,
+          team: prediction.team,
+          predictedLine: prediction.line,
+          actualLine: game.vegas_line,
+          week: selectedWeek,
+          timestamp: new Date().toISOString()
+        };
+      });
+
+      console.log('Picks formatted for save:', picksToSave);
+
+      const result = await saveUserPicks(user.userId, selectedWeek, picksToSave);
+      
+      if (result.success) {
+        setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
+      } else {
+        throw new Error('Failed to save picks');
+      }
+    } catch (error) {
+      console.error('Error saving picks:', {
+        error,
+        predictions,
+        user,
+        selectedWeek,
+        gamesDataExists: !!gamesData,
+        gamesExist: !!gamesData?.games
+      });
+      setSaveMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : 'Failed to save picks. Please try again.' 
+      });
     }
-  } catch (error) {
-    console.error('Error saving picks:', {
-      error,
-      predictions,
-      user,
-      selectedWeek,
-      gamesDataExists: !!gamesData,
-      gamesExist: !!gamesData?.games
-    });
-    setSaveMessage({ 
-      type: 'error', 
-      text: error instanceof Error ? error.message : 'Failed to save picks. Please try again.' 
-    });
-  }
-};
+  };
+
   const resetPredictions = () => {
     setPredictions({});
     setSubmitted(false);
@@ -565,7 +529,7 @@ const handleSubmit = async () => {
     setSaveMessage(null);
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-600 border-t-transparent" />
@@ -589,71 +553,60 @@ const handleSubmit = async () => {
     })
     .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
     .map(week => week.number);
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {showCelebration && <CelebrationOverlay onComplete={() => setShowCelebration(false)} />}
-      {showSignUpPrompt && (
-        <SignUpPrompt
-          onClose={() => setShowSignUpPrompt(false)}
-          onSignUpClick={() => {
-            setShowSignUpPrompt(false);
-            setShowAuthModal(true);
-          }}
-        />
-      )}
-      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} initialMode="signup" />}
-      <div className="relative overflow-hidden">
-        <FieldBackground />
-        
-        <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-30">
-          {user ? (
-            <div className="flex items-center gap-2 sm:gap-4">
-              <Link 
-                href="picks/history"
+    return (
+      <div className="min-h-screen bg-gray-100">
+        {showCelebration && <CelebrationOverlay onComplete={() => setShowCelebration(false)} />}
+        {showSignUpPrompt && (
+          <SignUpPrompt
+            onClose={() => setShowSignUpPrompt(false)}
+            onSignUpClick={() => {
+              setShowSignUpPrompt(false);
+              setShowAuthModal(true);
+            }}
+          />
+        )}
+        {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} initialMode="signup" />}
+        <div className="relative overflow-hidden">
+          <FieldBackground />
+          
+          <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-30">
+            {user ? (
+              <div className="flex items-center gap-2 sm:gap-4">
+                <Link 
+                  href="/picks/history"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
+                >
+                  View History
+                </Link>
+                <span className="text-white text-sm sm:text-base">
+                  {user.email || user.signInDetails?.loginId || 'User'}
+                </span>
+                <button 
+                  onClick={handleSignOut}
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setShowAuthModal(true)}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
               >
-                View History
-              </Link>
-              <span className="text-white text-sm sm:text-base">
-                {user.email || user.signInDetails?.loginId || 'User'}
-              </span>
-              <button 
-                onClick={async () => {
-                try {
-      await signOut({ global: true });
-      setUser(null);
-      localStorage.clear();
-      window.location.reload();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  }}
-  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
->
-  Sign Out
-</button>
-            </div>
-          ) : (
-            <button 
-              onClick={() => setShowAuthModal(true)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 rounded-lg hover:bg-gray-100 text-sm sm:text-base"
-            >
-              Sign In
-            </button>
-          )}
-        </div>
-
-        <div className="relative z-10 max-w-4xl mx-auto px-4 pt-8 sm:pt-12 pb-12 sm:pb-16 text-center">
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold text-white mb-4 sm:mb-6 drop-shadow-lg">
-            Guess The Lines
-          </h1>
-          <p className="text-xl sm:text-2xl md:text-3xl text-white font-medium max-w-2xl mx-auto leading-relaxed">
-            The Easiest Way to Play Along With Bill and Sal
-          </p>
-        </div>
-
-        <div className="relative z-20 max-w-4xl mx-auto px-2 sm:px-4 pb-8 sm:pb-12">
+                Sign In
+              </button>
+            )}
+          </div>
+  
+          <div className="relative z-10 max-w-4xl mx-auto px-4 pt-8 sm:pt-12 pb-12 sm:pb-16 text-center">
+            <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold text-white mb-4 sm:mb-6 drop-shadow-lg">
+              Guess The Lines
+            </h1>
+            <p className="text-xl sm:text-2xl md:text-3xl text-white font-medium max-w-2xl mx-auto leading-relaxed">
+              The Easiest Way to Play Along With Bill and Sal
+            </p>
+          </div>
+          <div className="relative z-20 max-w-4xl mx-auto px-2 sm:px-4 pb-8 sm:pb-12">
           <div className="bg-white rounded-lg shadow-lg mb-6 sm:mb-8 p-4">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-center">Select Week</h2>
             <WeekSelector 

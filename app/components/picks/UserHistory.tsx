@@ -1,98 +1,98 @@
-// app/picks/history/page.tsx
+// app/components/picks/UserHistory.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { getCurrentUser, type AuthUser } from 'aws-amplify/auth';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { getUserPicks } from '@/lib/dynamodb';
 import Link from 'next/link';
-// Fixed import path relative to app directory
-import UserHistory from '../../components/picks/UserHistory';
 
-interface AuthUserWithId extends AuthUser {
-  userId: string;
+interface Pick {
+  week: string;
+  team: string;
+  predictedLine: number;
+  actualLine: number;
+  timestamp: string;
 }
 
-export default function PicksHistoryPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<AuthUserWithId | null>(null);
+export default function UserHistory({ userId }: { userId: string }) {
+  const [picks, setPicks] = useState<Pick[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const loadPicks = async () => {
       try {
-        setLoading(true);
-        const currentUser = await getCurrentUser();
-        
-        if (!currentUser.userId) {
-          throw new Error('User ID not found');
-        }
-        
-        setUser(currentUser as AuthUserWithId);
-      } catch (err) {
-        console.error('Auth error:', err);
-        setError('Please log in to view your pick history');
-        setTimeout(() => router.push('/'), 3000);
+        const userPicks = await getUserPicks(userId);
+        setPicks(userPicks);
+      } catch (error) {
+        console.error('Error loading picks:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    checkAuth();
-  }, [router]);
+    loadPicks();
+  }, [userId]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-600 border-t-transparent" />
-          <p className="text-gray-600">Loading your pick history...</p>
-        </div>
+      <div className="flex justify-center p-8">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-600 border-t-transparent" />
       </div>
     );
   }
 
-  if (error) {
+  if (!picks.length) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
-          <p className="mt-4 text-center text-gray-600">
-            Redirecting to home page...
-          </p>
-        </div>
+      <div className="text-center py-16 px-4">
+        <h3 className="text-xl font-bold text-gray-900 mb-2">No Picks Yet</h3>
+        <p className="text-gray-600 mb-6">Make some predictions to start building your history!</p>
+        <Link 
+          href="/"
+          className="inline-block px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+        >
+          Make Predictions
+        </Link>
       </div>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Pick History</h1>
-            <p className="text-gray-600 mt-1">
-              View and analyze your previous picks
-            </p>
-          </div>
-          
-          <Link 
-            href="/"
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            Back to Picks
-          </Link>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm">
-          <UserHistory userId={user.userId} />
-        </div>
+    <div className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Week</th>
+              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Team</th>
+              <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900">Your Line</th>
+              <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900">Actual Line</th>
+              <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900">Difference</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white">
+            {picks.map((pick, index) => {
+              const difference = Math.abs(pick.predictedLine - pick.actualLine);
+              return (
+                <tr key={index}>
+                  <td className="px-4 py-3 text-sm text-gray-900">Week {pick.week}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">{pick.team}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                    {pick.predictedLine > 0 ? `+${pick.predictedLine}` : pick.predictedLine}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                    {pick.actualLine > 0 ? `+${pick.actualLine}` : pick.actualLine}
+                  </td>
+                  <td className={`px-4 py-3 text-sm text-right ${
+                    difference <= 0.5 ? 'text-green-600' :
+                    difference <= 3 ? 'text-yellow-600' :
+                    'text-red-600'
+                  }`}>
+                    {difference.toFixed(1)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
