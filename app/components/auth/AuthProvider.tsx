@@ -1,9 +1,8 @@
-// app/components/auth/AuthProvider.tsx
 "use client";
 
 import { Amplify } from 'aws-amplify';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getCurrentUser, type AuthUser } from 'aws-amplify/auth';
+import { getCurrentUser, fetchAuthSession, type AuthUser } from 'aws-amplify/auth';
 
 const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
 const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
@@ -29,8 +28,19 @@ Amplify.configure({
       identityPoolId,
       region,
       signUpVerificationMethod: 'code',
+      loginWith: {
+        email: true,
+        username: false,
+        phone: false
+      }
     }
-  }
+  },
+  aws_cognito_region: region,
+  aws_user_pools_id: userPoolId,
+  aws_user_pools_web_client_id: userPoolClientId,
+  aws_cognito_identity_pool_id: identityPoolId,
+  aws_cognito_authentication_type: 'USER_SRP',
+  aws_cognito_signup_attributes: ['email']
 });
 
 interface AuthContextType {
@@ -58,6 +68,18 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const currentUser = await getCurrentUser();
       console.log('Current user:', currentUser);
+      
+      // Verify credentials
+      const session = await fetchAuthSession();
+      console.log('Auth session credentials:', {
+        hasCredentials: !!session.credentials,
+        identityId: session.identityId
+      });
+
+      if (!session.credentials) {
+        throw new Error('No credentials available');
+      }
+      
       setUser(currentUser);
       setError(null);
     } catch (err) {

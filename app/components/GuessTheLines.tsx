@@ -489,7 +489,7 @@ export default function GuessTheLines() {
           userId: user.userId,
           gameId,
           team: prediction.team,
-          predictedLine: prediction.line,
+          predictedLine: parseFloat(prediction.line),
           actualLine: game.vegas_line,
           week: selectedWeek,
           timestamp: new Date().toISOString()
@@ -499,24 +499,23 @@ export default function GuessTheLines() {
       console.log('Picks formatted for save:', picksToSave);
 
       const result = await saveUserPicks(user.userId, selectedWeek, picksToSave);
-      
+        
       if (result.success) {
-        setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
+          setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
       } else {
-        throw new Error('Failed to save picks');
+          throw new Error('Failed to save picks');
       }
     } catch (error) {
       console.error('Error saving picks:', {
-        error,
-        predictions,
-        user,
-        selectedWeek,
-        gamesDataExists: !!gamesData,
-        gamesExist: !!gamesData?.games
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorType: error?.constructor?.name,
+          userId: user?.userId,
+          weekNumber: selectedWeek,
+          picksCount: picksToSave?.length
       });
       setSaveMessage({ 
-        type: 'error', 
-        text: error instanceof Error ? error.message : 'Failed to save picks. Please try again.' 
+          type: 'error', 
+          text: error instanceof Error ? error.message : 'Failed to save picks. Please try again.' 
       });
     }
   };
@@ -607,79 +606,80 @@ export default function GuessTheLines() {
             </p>
           </div>
           <div className="relative z-20 max-w-4xl mx-auto px-2 sm:px-4 pb-8 sm:pb-12">
-          <div className="bg-white rounded-lg shadow-lg mb-6 sm:mb-8 p-4">
-            <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-center">Select Week</h2>
-            <WeekSelector 
-              weeks={availableWeeks}
-              selectedWeek={selectedWeek}
-              onSelect={(week) => {
-                setSelectedWeek(week);
-                resetPredictions();
-              }}
-              currentWeek={gamesData.currentWeek}
-              user={user}
-            />
-          </div>
-
-          <div className="space-y-3 sm:space-y-4">
-            {filteredGames.map((game) => (
-              <GameCard
-                key={game.id}
-                game={game}
-                prediction={predictions[game.id]}
-                isSelected={selectedGame?.gameId === game.id}
-                submitted={submitted}
-                onTeamClick={handleTeamClick}
-                onPredictionUpdate={setPredictions}
-                onPredictionConfirm={() => setSelectedGame(null)}
+            <div className="bg-white rounded-lg shadow-lg mb-6 sm:mb-8 p-4">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 text-center">Select Week</h2>
+              <WeekSelector 
+                weeks={availableWeeks}
+                selectedWeek={selectedWeek}
+                onSelect={(week) => {
+                  setSelectedWeek(week);
+                  resetPredictions();
+                }}
+                currentWeek={gamesData.currentWeek}
+                user={user}
               />
-            ))}
+            </div>
+  
+            <div className="space-y-3 sm:space-y-4">
+              {filteredGames.map((game) => (
+                <GameCard
+                  key={game.id}
+                  game={game}
+                  prediction={predictions[game.id]}
+                  isSelected={selectedGame?.gameId === game.id}
+                  submitted={submitted}
+                  onTeamClick={handleTeamClick}
+                  onPredictionUpdate={setPredictions}
+                  onPredictionConfirm={() => setSelectedGame(null)}
+                />
+              ))}
+            </div>
+  
+            {filteredGames.length > 0 && filteredGames[0].type !== 'playoff' && (
+              <div className="flex justify-center pt-6">
+                <button
+                  onClick={submitted ? resetPredictions : handleSubmit}
+                  className="px-4 sm:px-6 py-2 sm:py-3 bg-green-600 text-white rounded-lg text-base sm:text-lg font-semibold hover:bg-green-700 transition-colors shadow-lg hover:shadow-xl"
+                >
+                  {submitted ? 'Make New Predictions' : 'Submit Predictions'}
+                </button>
+              </div>
+            )}
+  
+            {saveMessage && (
+              <div className={`mt-4 p-2 rounded text-sm sm:text-base ${
+                saveMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}>
+                {saveMessage.text}
+              </div>
+            )}
           </div>
-
-          {filteredGames.length > 0 && filteredGames[0].type !== 'playoff' && (
-            <div className="flex justify-center pt-6">
-              <button
-                onClick={submitted ? resetPredictions : handleSubmit}
-                className="px-4 sm:px-6 py-2 sm:py-3 bg-green-600 text-white rounded-lg text-base sm:text-lg font-semibold hover:bg-green-700 transition-colors shadow-lg hover:shadow-xl"
-              >
-                {submitted ? 'Make New Predictions' : 'Submit Predictions'}
-              </button>
-            </div>
-          )}
-
-          {saveMessage && (
-            <div className={`mt-4 p-2 rounded text-sm sm:text-base ${
-              saveMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-            }`}>
-              {saveMessage.text}
-            </div>
-          )}
         </div>
+        <style jsx>{`
+          @keyframes celebration {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+          .animate-celebration {
+            animation: celebration 1s ease-out forwards;
+            text-shadow: 0 0 20px rgba(34, 197, 94, 0.8);
+          }
+          @keyframes slide-up {
+            from {
+              transform: translateY(100%);
+              opacity: 0;
+            }
+            to {
+              transform: translateY(0);
+              opacity: 1;
+            }
+          }
+          .animate-slide-up {
+            animation: slide-up 0.3s ease-out;
+          }
+        `}</style>
       </div>
-      <style jsx>{`
-        @keyframes celebration {
-          0% { transform: scale(0.5); opacity: 0; }
-          50% { transform: scale(1.2); opacity: 1; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        .animate-celebration {
-          animation: celebration 1s ease-out forwards;
-          text-shadow: 0 0 20px rgba(34, 197, 94, 0.8);
-        }
-        @keyframes slide-up {
-          from {
-            transform: translateY(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-        .animate-slide-up {
-          animation: slide-up 0.3s ease-out;
-        }
-      `}</style>
-    </div>
-  );
-}
+    );
+  }
+  
