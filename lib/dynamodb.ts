@@ -36,55 +36,69 @@ const getDocClient = async () => {
       hasSession: !!session,
       hasCredentials: !!session?.credentials,
       identityId: session?.identityId,
-      hasTokens: !!session?.tokens
+      accessKeyId: session?.credentials?.accessKeyId ? 'present' : 'missing',
+      secretAccessKey: session?.credentials?.secretAccessKey ? 'present' : 'missing',
+      sessionToken: session?.credentials?.sessionToken ? 'present' : 'missing'
     });
     
-    if (!session?.credentials) {
-      console.error('No credentials in session:', session);
-      throw new Error('No valid authentication session');
+    if (!session?.credentials?.accessKeyId || !session?.credentials?.secretAccessKey) {
+      console.error('Missing credentials in session:', {
+        hasAccessKey: !!session?.credentials?.accessKeyId,
+        hasSecretKey: !!session?.credentials?.secretAccessKey,
+        hasSessionToken: !!session?.credentials?.sessionToken
+      });
+      throw new Error('Incomplete credentials in session');
     }
 
     const client = new DynamoDBClient({
       region: process.env.NEXT_PUBLIC_AWS_REGION,
-      credentials: session.credentials
+      credentials: {
+        accessKeyId: session.credentials.accessKeyId,
+        secretAccessKey: session.credentials.secretAccessKey,
+        sessionToken: session.credentials.sessionToken
+      }
     });
 
     console.log('DynamoDB client created with region:', process.env.NEXT_PUBLIC_AWS_REGION);
 
     const docClient = DynamoDBDocumentClient.from(client, {
       marshallOptions: {
-        removeUndefinedValues: true
+        removeUndefinedValues: true,
+        convertEmptyValues: true
       }
     });
 
-    // Test the connection
+    // Test the connection with actual user ID if available
     try {
+      const testUserId = session?.identityId || 'test';
       await docClient.send(new QueryCommand({
         TableName: 'UserPicks',
         Limit: 1,
         KeyConditionExpression: 'userId = :userId',
         ExpressionAttributeValues: {
-          ':userId': 'test'
+          ':userId': testUserId
         }
       }));
       console.log('DynamoDB connection test successful');
     } catch (testError) {
-      console.error('DynamoDB test query failed:', testError);
+      console.error('DynamoDB test query failed:', {
+        error: testError,
+        errorMessage: testError instanceof Error ? testError.message : 'Unknown error'
+      });
     }
 
     return docClient;
   } catch (error) {
     console.error('Error getting DynamoDB client:', {
       error,
-      errorType: error.name,
-      errorMessage: error.message,
+      errorType: error instanceof Error ? error.name : 'Unknown error type',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
       region: process.env.NEXT_PUBLIC_AWS_REGION,
       hasIdentityPoolId: !!process.env.NEXT_PUBLIC_IDENTITY_POOL_ID
     });
-    throw new Error('Failed to initialize database connection. Please log in again.');
+    throw new Error('Failed to initialize database connection. Please try again or sign out and sign back in.');
   }
 };
-
 // Check if line prediction was accurate (within 3 points)
 const isAccuratePick = (predicted: number, actual: number) => Math.abs(predicted - actual) <= 3;
 
