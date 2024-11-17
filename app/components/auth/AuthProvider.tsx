@@ -2,7 +2,7 @@
 
 import { Amplify } from 'aws-amplify';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getCurrentUser, fetchAuthSession, type AuthUser } from 'aws-amplify/auth';
+import { getCurrentUser, fetchAuthSession, signInWithRedirect, type AuthUser } from 'aws-amplify/auth';
 
 const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
 const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
@@ -20,6 +20,7 @@ if (!userPoolId || !userPoolClientId || !identityPoolId || !region) {
   throw new Error('Missing required Cognito configuration');
 }
 
+// Configure Amplify Auth
 Amplify.configure({
   Auth: {
     Cognito: {
@@ -28,22 +29,15 @@ Amplify.configure({
       identityPoolId,
       region,
       signUpVerificationMethod: 'code',
+      loginWith: {
+        email: true,
+        phone: false,
+        username: false
+      }
     }
-  },
-  // Required AWS configuration
-  aws_project_region: region,
-  aws_cognito_region: region,
-  aws_user_pools_id: userPoolId,
-  aws_user_pools_web_client_id: userPoolClientId,
-  aws_cognito_identity_pool_id: identityPoolId,
-  aws_mandatory_sign_in: false,
-  aws_cognito_authentication_type: 'USER_SRP',
-  aws_cognito_signup_attributes: ['email'],
-  aws_cognito_mfa_configuration: 'OFF',
-  aws_cognito_password_protection_settings: {
-    passwordPolicyMinLength: 8,
-    passwordPolicyCharacters: []
   }
+}, {
+  ssr: true
 });
 
 interface AuthContextType {
@@ -72,14 +66,18 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       const currentUser = await getCurrentUser();
       console.log('Current user:', currentUser);
       
-      // Verify credentials
+      // Fetch and verify the auth session
       const session = await fetchAuthSession();
-      console.log('Auth session credentials:', {
-        hasCredentials: !!session.credentials,
-        identityId: session.identityId
+      console.log('Auth session details:', {
+        hasSession: !!session,
+        hasCredentials: !!session?.credentials,
+        identityId: session?.identityId,
+        accessKeyId: session?.credentials?.accessKeyId ? 'present' : 'missing',
+        secretAccessKey: session?.credentials?.secretAccessKey ? 'present' : 'missing',
+        sessionToken: session?.credentials?.sessionToken ? 'present' : 'missing'
       });
 
-      if (!session.credentials) {
+      if (!session?.credentials?.accessKeyId || !session?.credentials?.secretAccessKey) {
         throw new Error('No credentials available');
       }
       
@@ -88,7 +86,17 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('Auth check error:', err);
       setUser(null);
-      setError(err instanceof Error ? err : new Error('Authentication error'));
+      if (err instanceof Error) {
+        setError(err);
+      } else {
+        setError(new Error('Failed to authenticate'));
+      }
+      // Attempt to clear any stale state
+      try {
+        localStorage.clear();
+      } catch (e) {
+        console.error('Failed to clear localStorage:', e);
+      }
     } finally {
       setLoading(false);
     }
