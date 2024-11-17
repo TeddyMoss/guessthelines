@@ -2,22 +2,32 @@
 "use client";
 
 import { Amplify } from 'aws-amplify';
-import { createContext, useContext, useState, useEffect } from 'react';
-import { getCurrentUser, AuthUser } from 'aws-amplify/auth';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { getCurrentUser, type AuthUser } from 'aws-amplify/auth';
 
 const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
 const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+const identityPoolId = process.env.NEXT_PUBLIC_IDENTITY_POOL_ID;
 const region = process.env.NEXT_PUBLIC_AWS_REGION;
 
-if (!userPoolId || !userPoolClientId || !region) {
+console.log('Auth Configuration:', {
+  userPoolId,
+  userPoolClientId,
+  identityPoolId,
+  region
+});
+
+if (!userPoolId || !userPoolClientId || !identityPoolId || !region) {
   throw new Error('Missing required Cognito configuration');
 }
 
 Amplify.configure({
   Auth: {
     Cognito: {
-      userPoolClientId,
       userPoolId,
+      userPoolClientId,
+      identityPoolId,
+      region,
       signUpVerificationMethod: 'code',
     }
   }
@@ -39,7 +49,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-export default function AuthProvider({ children }: { children: React.ReactNode }) {
+export default function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -49,6 +59,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const currentUser = await getCurrentUser();
       console.log('Current user:', currentUser);
       setUser(currentUser);
+      setError(null);
     } catch (err) {
       console.error('Auth check error:', err);
       setUser(null);

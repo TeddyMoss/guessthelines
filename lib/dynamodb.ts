@@ -30,46 +30,56 @@ interface UserStats {
 
 const getDocClient = async () => {
   try {
+    console.log('Fetching auth session...');
     const session = await fetchAuthSession();
-    console.log('Auth session retrieved:', { 
+    console.log('Session details:', {
+      hasSession: !!session,
       hasCredentials: !!session?.credentials,
-      identityId: session?.identityId
+      identityId: session?.identityId,
+      hasTokens: !!session?.tokens
     });
     
     if (!session?.credentials) {
-      console.error('No credentials in session');
+      console.error('No credentials in session:', session);
       throw new Error('No valid authentication session');
-    }
-
-    // Add region check
-    if (!process.env.NEXT_PUBLIC_AWS_REGION) {
-      console.error('AWS Region not configured');
-      throw new Error('AWS configuration missing');
     }
 
     const client = new DynamoDBClient({
       region: process.env.NEXT_PUBLIC_AWS_REGION,
-      credentials: {
-        accessKeyId: session.credentials.accessKeyId,
-        secretAccessKey: session.credentials.secretAccessKey,
-        sessionToken: session.credentials.sessionToken
-      }
+      credentials: session.credentials
     });
 
-    return DynamoDBDocumentClient.from(client, {
+    console.log('DynamoDB client created with region:', process.env.NEXT_PUBLIC_AWS_REGION);
+
+    const docClient = DynamoDBDocumentClient.from(client, {
       marshallOptions: {
         removeUndefinedValues: true
       }
     });
+
+    // Test the connection
+    try {
+      await docClient.send(new QueryCommand({
+        TableName: 'UserPicks',
+        Limit: 1,
+        KeyConditionExpression: 'userId = :userId',
+        ExpressionAttributeValues: {
+          ':userId': 'test'
+        }
+      }));
+      console.log('DynamoDB connection test successful');
+    } catch (testError) {
+      console.error('DynamoDB test query failed:', testError);
+    }
+
+    return docClient;
   } catch (error) {
     console.error('Error getting DynamoDB client:', {
       error,
-      errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      hasEnvVars: {
-        region: !!process.env.NEXT_PUBLIC_AWS_REGION,
-        userPoolId: !!process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
-        identityPoolId: !!process.env.NEXT_PUBLIC_IDENTITY_POOL_ID
-      }
+      errorType: error.name,
+      errorMessage: error.message,
+      region: process.env.NEXT_PUBLIC_AWS_REGION,
+      hasIdentityPoolId: !!process.env.NEXT_PUBLIC_IDENTITY_POOL_ID
     });
     throw new Error('Failed to initialize database connection. Please log in again.');
   }
@@ -93,13 +103,11 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
     const docClient = await getDocClient();
     console.log('DynamoDB client initialized');
     
-    // Validate picks data
     if (!Array.isArray(picks) || picks.length === 0) {
       console.error('Invalid picks data:', picks);
       throw new Error('Invalid picks data');
     }
 
-    // First, save individual picks
     console.log('Preparing to save picks:', picks);
     const savePicksPromises = picks.map(pick => {
       const item = {
@@ -118,7 +126,6 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
       }));
     });
 
-    // Calculate stats for this week
     const weekStats = picks.reduce((stats, pick) => ({
       picks: stats.picks + 1,
       accurate: stats.accurate + (isAccuratePick(pick.predictedLine, pick.actualLine) ? 1 : 0),
@@ -127,7 +134,6 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
 
     console.log('Calculated week stats:', weekStats);
 
-    // Get existing user stats
     const existingStats = await docClient.send(new GetCommand({
       TableName: 'UserStats',
       Key: { userId }
@@ -142,7 +148,6 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
       weeklyStats: {}
     };
 
-    // Update overall stats
     const newStats = {
       ...currentStats,
       totalPicks: currentStats.totalPicks + weekStats.picks,
@@ -154,7 +159,6 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
       }
     };
 
-    // Calculate new average deviation
     const totalDeviation = picks.reduce((sum, pick) => 
       sum + Math.abs(pick.predictedLine - pick.actualLine), 0);
     newStats.averageDeviation = 
@@ -163,7 +167,6 @@ export async function saveUserPicks(userId: string, week: string, picks: UserPic
 
     console.log('Saving updated stats:', newStats);
 
-    // Save updated stats
     await docClient.send(new PutCommand({
       TableName: 'UserStats',
       Item: newStats
