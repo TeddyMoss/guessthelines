@@ -28,19 +28,22 @@ Amplify.configure({
       identityPoolId,
       region,
       signUpVerificationMethod: 'code',
-      loginWith: {
-        email: true,
-        username: false,
-        phone: false
-      }
     }
   },
+  // Required AWS configuration
+  aws_project_region: region,
   aws_cognito_region: region,
   aws_user_pools_id: userPoolId,
   aws_user_pools_web_client_id: userPoolClientId,
   aws_cognito_identity_pool_id: identityPoolId,
+  aws_mandatory_sign_in: false,
   aws_cognito_authentication_type: 'USER_SRP',
-  aws_cognito_signup_attributes: ['email']
+  aws_cognito_signup_attributes: ['email'],
+  aws_cognito_mfa_configuration: 'OFF',
+  aws_cognito_password_protection_settings: {
+    passwordPolicyMinLength: 8,
+    passwordPolicyCharacters: []
+  }
 });
 
 interface AuthContextType {
