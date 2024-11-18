@@ -20,17 +20,23 @@ if (!userPoolId || !userPoolClientId || !identityPoolId || !region) {
   throw new Error('Missing required Cognito configuration');
 }
 
-Amplify.configure({
-  Auth: {
-    Cognito: {
-      userPoolId,
-      userPoolClientId,
-      identityPoolId,
-      region,
-      signUpVerificationMethod: 'code'
+try {
+  Amplify.configure({
+    Auth: {
+      Cognito: {
+        userPoolId,
+        userPoolClientId,
+        identityPoolId,
+        region,
+        signUpVerificationMethod: 'code',
+        authenticationFlowType: 'USER_SRP_AUTH'
+      }
     }
-  }
-});
+  });
+  console.log('Amplify configured successfully');
+} catch (error) {
+  console.error('Error configuring Amplify:', error);
+}
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -59,31 +65,40 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       const currentUser = await getCurrentUser();
       console.log('Current user:', currentUser);
 
-      // Then explicitly fetch a new auth session
-      const session = await fetchAuthSession();
-      console.log('Auth session details:', {
-        hasTokens: !!session.tokens,
-        identityId: session.identityId,
-        hasCredentials: !!session.credentials,
-        accessKeyPresent: !!session.credentials?.accessKeyId,
-        secretKeyPresent: !!session.credentials?.secretAccessKey
-      });
+      // Then explicitly fetch a new auth session with retries
+      let session = null;
+      let retries = 3;
+      
+      while (retries > 0 && (!session?.credentials?.accessKeyId)) {
+        try {
+          session = await fetchAuthSession();
+          console.log(`Auth session details (attempt ${4 - retries}):`, {
+            hasTokens: !!session.tokens,
+            identityId: session.identityId,
+            hasCredentials: !!session.credentials,
+            accessKeyPresent: !!session.credentials?.accessKeyId,
+            secretKeyPresent: !!session.credentials?.secretAccessKey
+          });
 
-      if (!session.credentials?.accessKeyId || !session.credentials?.secretAccessKey) {
-        // Add a small delay and retry once
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const retrySession = await fetchAuthSession();
-        console.log('Retry session details:', {
-          hasTokens: !!retrySession.tokens,
-          identityId: retrySession.identityId,
-          hasCredentials: !!retrySession.credentials,
-          accessKeyPresent: !!retrySession.credentials?.accessKeyId,
-          secretKeyPresent: !!retrySession.credentials?.secretAccessKey
-        });
-        
-        if (!retrySession.credentials?.accessKeyId) {
-          throw new Error('Failed to obtain credentials after retry');
+          if (session?.credentials?.accessKeyId) {
+            break;
+          }
+
+          retries--;
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (sessionError) {
+          console.error(`Session fetch error (attempt ${4 - retries}):`, sessionError);
+          retries--;
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
         }
+      }
+
+      if (!session?.credentials?.accessKeyId) {
+        throw new Error('Failed to obtain credentials after retries');
       }
       
       setUser(currentUser);
