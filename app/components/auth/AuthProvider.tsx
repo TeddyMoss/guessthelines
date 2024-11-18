@@ -20,23 +20,28 @@ if (!userPoolId || !userPoolClientId || !identityPoolId || !region) {
   throw new Error('Missing required Cognito configuration');
 }
 
-try {
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        userPoolId,
-        userPoolClientId,
-        identityPoolId,
-        region,
-        signUpVerificationMethod: 'code',
-        authenticationFlowType: 'USER_SRP_AUTH'
-      }
+Amplify.configure({
+  Auth: {
+    Cognito: {
+      userPoolId,
+      userPoolClientId,
+      identityPoolId,
+      region,
+      authenticationFlowType: 'USER_SRP_AUTH',
+      oauth: {
+        domain: 'guessthelines.app',
+        scope: ['email', 'openid'],
+        redirectSignIn: 'https://guessthelines.app',
+        redirectSignOut: 'https://guessthelines.app',
+        responseType: 'code'
+      },
+      tokenRefreshWindow: 24 * 60 * 60 * 1000,
+      refreshCooldown: 0,
+      pushCognitoCredentialsToDeviceKeystore: true,
+      rejectDeviceKeystore: false
     }
-  });
-  console.log('Amplify configured successfully');
-} catch (error) {
-  console.error('Error configuring Amplify:', error);
-}
+  }
+});
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -61,44 +66,50 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkUser = async () => {
     try {
-      // First ensure we can get the current user
+      console.log('Starting checkUser...');
       const currentUser = await getCurrentUser();
       console.log('Current user:', currentUser);
 
-      // Then explicitly fetch a new auth session with retries
-      let session = null;
-      let retries = 3;
-      
-      while (retries > 0 && (!session?.credentials?.accessKeyId)) {
-        try {
-          session = await fetchAuthSession();
-          console.log(`Auth session details (attempt ${4 - retries}):`, {
-            hasTokens: !!session.tokens,
-            identityId: session.identityId,
-            hasCredentials: !!session.credentials,
-            accessKeyPresent: !!session.credentials?.accessKeyId,
-            secretKeyPresent: !!session.credentials?.secretAccessKey
-          });
-
-          if (session?.credentials?.accessKeyId) {
-            break;
-          }
-
-          retries--;
-          if (retries > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        } catch (sessionError) {
-          console.error(`Session fetch error (attempt ${4 - retries}):`, sessionError);
-          retries--;
-          if (retries > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
+      console.log('Fetching auth session...');
+      const session = await fetchAuthSession();
+      console.log('Auth session details:', {
+        hasSession: !!session,
+        tokens: {
+          idToken: !!session.tokens?.idToken,
+          accessToken: !!session.tokens?.accessToken,
+          expiration: session.tokens?.idToken?.expiration
+        },
+        identityId: session.identityId,
+        credentials: {
+          accessKeyId: !!session.credentials?.accessKeyId,
+          secretKey: !!session.credentials?.secretAccessKey,
+          sessionToken: !!session.credentials?.sessionToken
         }
-      }
+      });
 
       if (!session?.credentials?.accessKeyId) {
-        throw new Error('Failed to obtain credentials after retries');
+        console.log('No credentials in initial session, retrying after delay...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const retrySession = await fetchAuthSession();
+        console.log('Retry session details:', {
+          hasSession: !!retrySession,
+          tokens: {
+            idToken: !!retrySession.tokens?.idToken,
+            accessToken: !!retrySession.tokens?.accessToken,
+            expiration: retrySession.tokens?.idToken?.expiration
+          },
+          identityId: retrySession.identityId,
+          credentials: {
+            accessKeyId: !!retrySession.credentials?.accessKeyId,
+            secretKey: !!retrySession.credentials?.secretAccessKey,
+            sessionToken: !!retrySession.credentials?.sessionToken
+          }
+        });
+        
+        if (!retrySession.credentials?.accessKeyId) {
+          throw new Error('Failed to obtain credentials after retry');
+        }
       }
       
       setUser(currentUser);
@@ -114,7 +125,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setError(err instanceof Error ? err : new Error('Authentication error'));
       
-      // Clear any stale state
       try {
         localStorage.clear();
       } catch (e) {
