@@ -2,7 +2,7 @@
 
 import { Amplify } from 'aws-amplify';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getCurrentUser, fetchAuthSession, signInWithRedirect, type AuthUser } from 'aws-amplify/auth';
+import { getCurrentUser, fetchAuthSession, type AuthUser } from 'aws-amplify/auth';
 
 const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
 const userPoolClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
@@ -20,7 +20,6 @@ if (!userPoolId || !userPoolClientId || !identityPoolId || !region) {
   throw new Error('Missing required Cognito configuration');
 }
 
-// Configure Amplify Auth
 Amplify.configure({
   Auth: {
     Cognito: {
@@ -28,16 +27,9 @@ Amplify.configure({
       userPoolClientId,
       identityPoolId,
       region,
-      signUpVerificationMethod: 'code',
-      loginWith: {
-        email: true,
-        phone: false,
-        username: false
-      }
+      signUpVerificationMethod: 'code'
     }
   }
-}, {
-  ssr: true
 });
 
 interface AuthContextType {
@@ -63,35 +55,51 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkUser = async () => {
     try {
+      // First ensure we can get the current user
       const currentUser = await getCurrentUser();
       console.log('Current user:', currentUser);
-      
-      // Fetch and verify the auth session
+
+      // Then explicitly fetch a new auth session
       const session = await fetchAuthSession();
       console.log('Auth session details:', {
-        hasSession: !!session,
-        hasCredentials: !!session?.credentials,
-        identityId: session?.identityId,
-        accessKeyId: session?.credentials?.accessKeyId ? 'present' : 'missing',
-        secretAccessKey: session?.credentials?.secretAccessKey ? 'present' : 'missing',
-        sessionToken: session?.credentials?.sessionToken ? 'present' : 'missing'
+        hasTokens: !!session.tokens,
+        identityId: session.identityId,
+        hasCredentials: !!session.credentials,
+        accessKeyPresent: !!session.credentials?.accessKeyId,
+        secretKeyPresent: !!session.credentials?.secretAccessKey
       });
 
-      if (!session?.credentials?.accessKeyId || !session?.credentials?.secretAccessKey) {
-        throw new Error('No credentials available');
+      if (!session.credentials?.accessKeyId || !session.credentials?.secretAccessKey) {
+        // Add a small delay and retry once
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const retrySession = await fetchAuthSession();
+        console.log('Retry session details:', {
+          hasTokens: !!retrySession.tokens,
+          identityId: retrySession.identityId,
+          hasCredentials: !!retrySession.credentials,
+          accessKeyPresent: !!retrySession.credentials?.accessKeyId,
+          secretKeyPresent: !!retrySession.credentials?.secretAccessKey
+        });
+        
+        if (!retrySession.credentials?.accessKeyId) {
+          throw new Error('Failed to obtain credentials after retry');
+        }
       }
       
       setUser(currentUser);
       setError(null);
     } catch (err) {
-      console.error('Auth check error:', err);
+      console.error('Auth check error details:', {
+        error: err,
+        errorType: err instanceof Error ? err.name : 'Unknown error type',
+        errorMessage: err instanceof Error ? err.message : 'Unknown error',
+        hasUser: !!user
+      });
+      
       setUser(null);
-      if (err instanceof Error) {
-        setError(err);
-      } else {
-        setError(new Error('Failed to authenticate'));
-      }
-      // Attempt to clear any stale state
+      setError(err instanceof Error ? err : new Error('Authentication error'));
+      
+      // Clear any stale state
       try {
         localStorage.clear();
       } catch (e) {

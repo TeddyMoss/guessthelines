@@ -1,6 +1,6 @@
 // app/components/auth/AuthModal.tsx
 import { useState } from 'react';
-import { signIn, signUp, confirmSignUp, resetPassword, confirmResetPassword, signOut } from 'aws-amplify/auth';
+import { signIn, signUp, confirmSignUp, resetPassword, confirmResetPassword, signOut, fetchAuthSession } from 'aws-amplify/auth';
 import { useAuth } from './AuthProvider';
 
 type AuthMode = 'signin' | 'signup' | 'confirm' | 'forgot' | 'reset';
@@ -25,12 +25,36 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
         await signOut({ global: true });
         localStorage.clear();
       } catch (signOutError) {
-        // Ignore signOut errors as there might not be an existing session
         console.log('No existing session to clear');
       }
 
-      // Then attempt to sign in
-      await signIn({ username: email, password });
+      // Then attempt to sign in and get session
+      const signInResult = await signIn({ 
+        username: email, 
+        password,
+        options: {
+          authFlowType: "USER_SRP_AUTH"
+        }
+      });
+      
+      console.log('Sign in result:', {
+        isSignedIn: signInResult.isSignedIn,
+        nextStep: signInResult.nextStep
+      });
+
+      // Make sure we have a complete sign in
+      if (!signInResult.isSignedIn) {
+        throw new Error('Sign in was not completed');
+      }
+
+      // Fetch session immediately after sign in
+      const session = await fetchAuthSession();
+      console.log('Post-signin session:', {
+        hasTokens: !!session.tokens,
+        hasCredentials: !!session.credentials,
+        identityId: session.identityId
+      });
+
       await refreshUser();
       onClose();
     } catch (err: any) {
@@ -84,7 +108,19 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
         console.log('No existing session to clear');
       }
 
-      await signIn({ username: email, password });
+      // Sign in with same flow as handleSignIn
+      const signInResult = await signIn({ 
+        username: email, 
+        password,
+        options: {
+          authFlowType: "USER_SRP_AUTH"
+        }
+      });
+
+      if (!signInResult.isSignedIn) {
+        throw new Error('Sign in was not completed after confirmation');
+      }
+
       await refreshUser();
       onClose();
     } catch (err: any) {
