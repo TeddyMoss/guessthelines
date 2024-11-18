@@ -20,15 +20,15 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
     setError('');
     
     try {
-      // First try to sign out any existing session
+      console.log('Starting sign in...');
       try {
         await signOut({ global: true });
         localStorage.clear();
+        console.log('Previous session cleared');
       } catch (signOutError) {
         console.log('No existing session to clear');
       }
-
-      // Then attempt to sign in and get session
+      
       const signInResult = await signIn({ 
         username: email, 
         password,
@@ -37,19 +37,13 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
         }
       });
       
-      console.log('Sign in result:', {
-        isSignedIn: signInResult.isSignedIn,
-        nextStep: signInResult.nextStep
-      });
-
-      // Make sure we have a complete sign in
+      console.log('Sign in result:', signInResult);
       if (!signInResult.isSignedIn) {
         throw new Error('Sign in was not completed');
       }
 
-      // Fetch session immediately after sign in
       const session = await fetchAuthSession();
-      console.log('Post-signin session:', {
+      console.log('Session after sign in:', {
         hasTokens: !!session.tokens,
         hasCredentials: !!session.credentials,
         identityId: session.identityId
@@ -57,9 +51,12 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
 
       await refreshUser();
       onClose();
-    } catch (err: any) {
-      console.error('Error signing in:', err);
-      setError(err.message || 'Error signing in');
+    } catch (err) {
+      console.error('Sign in error:', {
+        error: err,
+        message: err instanceof Error ? err.message : 'Unknown error'
+      });
+      setError(err instanceof Error ? err.message : 'Error signing in');
     } finally {
       setLoading(false);
     }
@@ -100,7 +97,6 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
         confirmationCode: code
       });
       
-      // Add pre-sign-in cleanup
       try {
         await signOut({ global: true });
         localStorage.clear();
@@ -108,19 +104,13 @@ export function AuthModal({ onClose, initialMode = 'signin' }: { onClose: () => 
         console.log('No existing session to clear');
       }
 
-      // Sign in with same flow as handleSignIn
-      const signInResult = await signIn({ 
+      await signIn({ 
         username: email, 
         password,
         options: {
           authFlowType: "USER_SRP_AUTH"
         }
       });
-
-      if (!signInResult.isSignedIn) {
-        throw new Error('Sign in was not completed after confirmation');
-      }
-
       await refreshUser();
       onClose();
     } catch (err: any) {

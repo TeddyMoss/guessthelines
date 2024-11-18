@@ -26,7 +26,10 @@ Amplify.configure({
       userPoolId,
       userPoolClientId,
       identityPoolId,
-      region
+      region,
+      loginWith: {
+        email: true
+      }
     }
   }
 });
@@ -54,20 +57,38 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkUser = async () => {
     try {
-      const currentUser = await getCurrentUser();
-      console.log('Current user:', currentUser);
-      
-      const session = await fetchAuthSession();
-      console.log('Auth session:', {
-        hasSession: !!session,
-        hasCredentials: !!session?.credentials,
-        identityId: session?.identityId
-      });
+      let retries = 3;
+      let currentUser;
+      let session;
 
-      if (!session?.credentials) {
+      while (retries > 0) {
+        try {
+          currentUser = await getCurrentUser();
+          session = await fetchAuthSession();
+          console.log('Auth attempt:', {
+            retries,
+            hasUser: !!currentUser,
+            hasCredentials: !!session?.credentials,
+            identityId: session?.identityId
+          });
+
+          if (session?.credentials?.accessKeyId) {
+            break;
+          }
+        } catch (e) {
+          console.log(`Retry ${4 - retries} failed:`, e);
+        }
+
+        retries--;
+        if (retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      if (!session?.credentials?.accessKeyId) {
         throw new Error('No credentials in session');
       }
-      
+
       setUser(currentUser);
       setError(null);
     } catch (err) {
