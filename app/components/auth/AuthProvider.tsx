@@ -27,10 +27,13 @@ Amplify.configure({
       userPoolClientId,
       identityPoolId,
       region,
-      userPoolClientId,
-      authenticationFlowType: 'USER_SRP_AUTH',
-      identityPoolRegion: region
+      signUpVerificationMethod: 'code',
+      identityPoolRegion: region,
+      allowGuestAccess: false
     }
+  },
+  Performance: {
+    pushIdentityCredentialsToDeviceKeystore: false
   }
 });
 
@@ -57,48 +60,38 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkUser = async () => {
     try {
-      let currentUser;
-      try {
-        currentUser = await getCurrentUser();
-        console.log('Got current user:', currentUser);
-      } catch (e) {
-        console.log('No current user found');
-        setUser(null);
-        setLoading(false);
-        return;
-      }
+      console.log('Starting auth check...');
+      const currentUser = await getCurrentUser();
+      console.log('Got current user:', currentUser);
 
-      let retries = 2;
-      let session;
-
-      while (retries >= 0) {
-        try {
-          console.log(`Attempt ${2 - retries}: Getting session...`);
-          session = await fetchAuthSession();
-          console.log('Session details:', {
-            hasTokens: !!session?.tokens,
-            identityId: session?.identityId,
-            hasCredentials: !!session?.credentials
-          });
-
-          if (session?.credentials?.accessKeyId) {
-            break;
-          }
-          retries--;
-          if (retries >= 0) {
-            await new Promise(r => setTimeout(r, 1000));
-          }
-        } catch (e) {
-          console.log(`Session fetch attempt ${2 - retries} failed:`, e);
-          retries--;
-          if (retries >= 0) {
-            await new Promise(r => setTimeout(r, 1000));
-          }
+      console.log('Fetching auth session...');
+      const session = await fetchAuthSession();
+      console.log('Session details:', {
+        hasTokens: !!session.tokens,
+        idToken: !!session.tokens?.idToken,
+        accessToken: !!session.tokens?.accessToken,
+        identityId: session.identityId,
+        credentials: {
+          hasCredentials: !!session.credentials,
+          hasAccessKey: !!session.credentials?.accessKeyId,
+          hasSecretKey: !!session.credentials?.secretAccessKey,
         }
-      }
+      });
 
       if (!session?.credentials?.accessKeyId) {
-        throw new Error('No credentials in session');
+        console.log('Retrying session fetch after delay...');
+        await new Promise(r => setTimeout(r, 2000));
+        
+        const retrySession = await fetchAuthSession();
+        console.log('Retry session details:', {
+          hasTokens: !!retrySession.tokens,
+          identityId: retrySession.identityId,
+          hasCredentials: !!retrySession.credentials
+        });
+
+        if (!retrySession?.credentials?.accessKeyId) {
+          throw new Error('Failed to obtain credentials after retry');
+        }
       }
 
       setUser(currentUser);
