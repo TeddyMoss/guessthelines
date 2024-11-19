@@ -28,12 +28,14 @@ Amplify.configure({
       identityPoolId,
       region,
       signUpVerificationMethod: 'code',
+      authenticationFlowType: 'USER_SRP_AUTH',
+    },
+    credentialProvider: {
+      identityPoolId,
       identityPoolRegion: region,
-      allowGuestAccess: false
+      authenticationType: 'AMAZON_COGNITO_USER_POOLS',
+      customRoleArn: `arn:aws:iam::594692202788:role/service-role/GuessTheLines_Auth_Role`
     }
-  },
-  Performance: {
-    pushIdentityCredentialsToDeviceKeystore: false
   }
 });
 
@@ -86,7 +88,9 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
         console.log('Retry session details:', {
           hasTokens: !!retrySession.tokens,
           identityId: retrySession.identityId,
-          hasCredentials: !!retrySession.credentials
+          hasCredentials: !!retrySession.credentials,
+          accessKeyPresent: !!retrySession.credentials?.accessKeyId,
+          secretKeyPresent: !!retrySession.credentials?.secretAccessKey
         });
 
         if (!retrySession?.credentials?.accessKeyId) {
