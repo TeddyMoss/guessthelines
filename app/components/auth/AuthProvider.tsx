@@ -27,11 +27,9 @@ Amplify.configure({
       userPoolClientId,
       identityPoolId,
       region,
-      loginWith: {
-        email: true,
-        phoneNumber: false,
-        username: false
-      }
+      userPoolClientId,
+      authenticationFlowType: 'USER_SRP_AUTH',
+      identityPoolRegion: region
     }
   }
 });
@@ -59,55 +57,57 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkUser = async () => {
     try {
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          const currentUser = await getCurrentUser();
-          console.log('Got current user:', currentUser);
+      let currentUser;
+      try {
+        currentUser = await getCurrentUser();
+        console.log('Got current user:', currentUser);
+      } catch (e) {
+        console.log('No current user found');
+        setUser(null);
+        setLoading(false);
+        return;
+      }
 
-          const session = await fetchAuthSession();
+      let retries = 2;
+      let session;
+
+      while (retries >= 0) {
+        try {
+          console.log(`Attempt ${2 - retries}: Getting session...`);
+          session = await fetchAuthSession();
           console.log('Session details:', {
-            hasTokens: !!session.tokens,
-            tokenExpiration: session.tokens?.idToken?.expiration,
-            identityId: session.identityId,
-            credentials: !!session.credentials,
-            accessKeyId: !!session.credentials?.accessKeyId,
-            secretKey: !!session.credentials?.secretAccessKey
+            hasTokens: !!session?.tokens,
+            identityId: session?.identityId,
+            hasCredentials: !!session?.credentials
           });
 
           if (session?.credentials?.accessKeyId) {
-            setUser(currentUser);
-            setError(null);
-            return;
-          } else {
-            console.log(`No credentials in attempt ${4 - retries}`);
+            break;
+          }
+          retries--;
+          if (retries >= 0) {
+            await new Promise(r => setTimeout(r, 1000));
           }
         } catch (e) {
-          console.error(`Auth attempt ${4 - retries} failed:`, e);
-        }
-        retries--;
-        if (retries > 0) {
-          console.log(`Waiting before retry ${4 - retries}`);
-          await new Promise(r => setTimeout(r, 1000));
+          console.log(`Session fetch attempt ${2 - retries} failed:`, e);
+          retries--;
+          if (retries >= 0) {
+            await new Promise(r => setTimeout(r, 1000));
+          }
         }
       }
-      throw new Error('Failed to obtain credentials after retry');
+
+      if (!session?.credentials?.accessKeyId) {
+        throw new Error('No credentials in session');
+      }
+
+      setUser(currentUser);
+      setError(null);
     } catch (err) {
-      console.error('Auth check error details:', {
-        error: err,
-        errorType: err instanceof Error ? err.name : 'Unknown error type',
-        errorMessage: err instanceof Error ? err.message : 'Unknown error',
-        hasUser: !!user
-      });
-      
+      console.error('Auth check error:', err);
       setUser(null);
       setError(err instanceof Error ? err : new Error('Authentication error'));
-      
-      try {
-        localStorage.clear();
-      } catch (e) {
-        console.error('Failed to clear localStorage:', e);
-      }
+      localStorage.clear();
     } finally {
       setLoading(false);
     }
