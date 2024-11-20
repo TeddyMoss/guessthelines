@@ -453,16 +453,17 @@ export default function GuessTheLines() {
       new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime()
     );
   };
+  
   const handleSubmit = async () => {
     setSubmitted(true);
     setShowCelebration(true);
     setSelectedGame(null);
-
+  
     if (!user?.userId) {
       setSaveMessage({ type: 'error', text: 'Please log in to save picks' });
       return;
     }
-
+  
     try {
       console.log('Starting save with:', {
         predictions,
@@ -470,21 +471,21 @@ export default function GuessTheLines() {
         selectedWeek,
         gamesData
       });
-
+  
       if (!predictions || Object.keys(predictions).length === 0) {
         throw new Error('No predictions to save');
       }
-
+  
       if (!gamesData?.games) {
         throw new Error('Games data not available');
       }
-
-      const picksToSave = Object.entries(predictions).map(([gameId, prediction]) => {
+  
+      const picks = Object.entries(predictions).map(([gameId, prediction]) => {
         const game = gamesData.games.find(g => g.id === gameId);
         if (!game) {
           throw new Error(`Game not found: ${gameId}`);
         }
-
+  
         return {
           userId: user.userId,
           gameId,
@@ -495,10 +496,10 @@ export default function GuessTheLines() {
           timestamp: new Date().toISOString()
         };
       });
-
-      console.log('Picks formatted for save:', picksToSave);
-
-      const result = await saveUserPicks(user.userId, selectedWeek, picksToSave);
+  
+      console.log('Picks formatted for save:', picks);
+  
+      const result = await saveUserPicks(user.userId, selectedWeek, picks);
         
       if (result.success) {
           setSaveMessage({ type: 'success', text: 'Picks saved successfully!' });
@@ -511,7 +512,7 @@ export default function GuessTheLines() {
           errorType: error?.constructor?.name,
           userId: user?.userId,
           weekNumber: selectedWeek,
-          picksCount: picksToSave?.length
+          picksCount: Object.keys(predictions).length
       });
       setSaveMessage({ 
           type: 'error', 
