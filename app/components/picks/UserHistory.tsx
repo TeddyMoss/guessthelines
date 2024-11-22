@@ -22,6 +22,17 @@ export default function UserHistory({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const loadPicks = async () => {
+    try {
+        console.log('Fetching picks for user:', userId);
+        const userPicks = await getUserPicks(userId);
+        console.log('Received picks from DB:', userPicks);
+        setPicks(userPicks);
+    } catch (error) {
+        console.error('Error loading picks:', error);
+    }
+};
+
   useEffect(() => {
     const loadPicks = async () => {
       try {

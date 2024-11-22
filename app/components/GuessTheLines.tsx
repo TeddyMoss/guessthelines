@@ -498,6 +498,14 @@ export default function GuessTheLines() {
       });
   
       console.log('Picks formatted for save:', picks);
+
+      console.log('Picks being saved:', picks.map(pick => ({
+        team: pick.team,
+        predictedLine: pick.predictedLine,
+        actualLine: pick.actualLine,
+        week: selectedWeek,
+        gameId: pick.gameId
+    })));
   
       const result = await saveUserPicks(user.userId, selectedWeek, picks);
         
