@@ -10,7 +10,12 @@ const client = new DynamoDBClient({
   }
 });
 
-const docClient = DynamoDBDocumentClient.from(client);
+const docClient = DynamoDBDocumentClient.from(client, {
+  marshallOptions: {
+    removeUndefinedValues: true,
+    convertEmptyValues: true
+  }
+});
 
 export async function GET(request: Request) {
   try {
@@ -18,33 +23,63 @@ export async function GET(request: Request) {
     const userId = searchParams.get('userId');
     const week = searchParams.get('week');
 
-    console.log('Fetching picks:', { userId, week });
+    console.log('Starting picks fetch:', { userId, week });
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    let queryParams: any = {
+    let queryParams = {
       TableName: 'UserPicks',
       KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: {
         ':userId': userId
-      }
+      },
+      Limit: 100,
+      ScanIndexForward: false  // Get most recent first
     };
 
     if (week) {
-      queryParams.KeyConditionExpression += ' and weekId = :weekId';
+      queryParams.KeyConditionExpression += ' AND weekId = :weekId';
       queryParams.ExpressionAttributeValues[':weekId'] = week;
     }
 
+    console.log('Query params:', queryParams);
     const result = await docClient.send(new QueryCommand(queryParams));
-    console.log('Query result:', { itemCount: result.Items?.length });
+    
+    console.log('Query response:', {
+      itemCount: result.Items?.length,
+      firstItem: result.Items?.[0],
+      hasMore: !!result.LastEvaluatedKey
+    });
+
+    // If there are more items, get them all
+    let allItems = result.Items || [];
+    let lastKey = result.LastEvaluatedKey;
+
+    while (lastKey) {
+      const nextResult = await docClient.send(new QueryCommand({
+        ...queryParams,
+        ExclusiveStartKey: lastKey
+      }));
+      allItems = [...allItems, ...(nextResult.Items || [])];
+      lastKey = nextResult.LastEvaluatedKey;
+    }
+
+    console.log('Final result:', {
+      totalItems: allItems.length,
+      uniqueWeeks: [...new Set(allItems.map(item => item.weekId))].sort()
+    });
 
     return NextResponse.json({
-      picks: result.Items || []
+      picks: allItems
     });
   } catch (error) {
-    console.error('Error fetching picks:', error);
+    console.error('Error fetching picks:', {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return NextResponse.json(
       { error: 'Failed to fetch picks' },
       { status: 500 }
@@ -72,6 +107,7 @@ export async function POST(request: Request) {
         timestamp: new Date().toISOString()
       };
 
+      console.log('Saving pick:', item);
       return docClient.send(new PutCommand({
         TableName: 'UserPicks',
         Item: item
@@ -79,9 +115,17 @@ export async function POST(request: Request) {
     });
 
     await Promise.all(savePromises);
+    console.log('Successfully saved all picks');
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Save error:', error);
-    return NextResponse.json({ error: 'Failed to save picks' }, { status: 500 });
+    console.error('Save error:', {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    return NextResponse.json({ 
+      error: 'Failed to save picks',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

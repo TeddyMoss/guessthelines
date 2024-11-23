@@ -483,20 +483,26 @@ export default function GuessTheLines() {
       const picks = Object.entries(predictions).map(([gameId, prediction]) => {
         const game = gamesData.games.find(g => g.id === gameId);
         if (!game) {
-          throw new Error(`Game not found: ${gameId}`);
+            throw new Error(`Game not found: ${gameId}`);
         }
-  
+    
+        // Calculate the actual line based on team selection
+        const actualLine = prediction.team === game.home_team ? 
+            game.vegas_line : -game.vegas_line;
+    
+        // Calculate predicted line with proper sign
+        const predictedLine = parseFloat(prediction.line);
+    
         return {
-          userId: user.userId,
-          gameId,
-          team: prediction.team,
-          predictedLine: parseFloat(prediction.line),
-          actualLine: game.vegas_line,
-          week: selectedWeek,
-          timestamp: new Date().toISOString()
+            userId: user.userId,
+            gameId,
+            team: prediction.team,
+            predictedLine,
+            actualLine,
+            week: selectedWeek,
+            timestamp: new Date().toISOString()
         };
-      });
-  
+    });
       console.log('Picks formatted for save:', picks);
 
       console.log('Picks being saved:', picks.map(pick => ({
