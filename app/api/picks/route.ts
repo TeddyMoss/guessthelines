@@ -40,8 +40,8 @@ export async function GET(request: Request) {
     };
 
     if (week) {
-      queryParams.KeyConditionExpression += ' AND weekId = :weekId';
-      queryParams.ExpressionAttributeValues[':weekId'] = week;
+      queryParams.KeyConditionExpression += ' AND begins_with(sortKey, :weekPrefix)';
+      queryParams.ExpressionAttributeValues[':weekPrefix'] = `${week}#`;
     }
 
     console.log('Query params:', queryParams);
@@ -72,15 +72,30 @@ export async function GET(request: Request) {
       itemSample: allItems.slice(0, 2)
     });
 
-    // Map the items to ensure consistent field names
+    // Map the items to ensure consistent field names and group by week
     const mappedItems = allItems.map(item => ({
-      weekId: item.weekId,  // Keep weekId consistent
+      weekId: item.weekId,
       team: item.team,
       predictedLine: item.predictedLine,
-      actualLine: item.actualLine || 0, // Default to 0 if not set
+      actualLine: item.actualLine || 0,
       gameId: item.gameId,
       timestamp: item.timestamp
     }));
+
+    // Group by week to ensure we're returning all picks for each week
+    const picksByWeek = mappedItems.reduce((acc, item) => {
+      if (!acc[item.weekId]) {
+        acc[item.weekId] = [];
+      }
+      acc[item.weekId].push(item);
+      return acc;
+    }, {});
+
+    console.log('Picks by week:', Object.entries(picksByWeek).map(([week, picks]) => ({
+      week,
+      count: picks.length,
+      teams: picks.map(p => p.team)
+    })));
 
     return NextResponse.json({
       picks: mappedItems
@@ -102,16 +117,14 @@ export async function POST(request: Request) {
   try {
     const { userId, week, picks } = await request.json();
     
-    // Enhanced logging for debugging
     console.log('Received picks data:', {
       userId,
       week,
       picksCount: picks?.length,
       picksDetail: picks?.map(p => ({
-        keys: Object.keys(p),
-        gameId: p.gameId,
         team: p.team,
-        predictedLine: p.predictedLine
+        predictedLine: p.predictedLine,
+        gameId: p.gameId
       }))
     });
 
@@ -120,12 +133,16 @@ export async function POST(request: Request) {
     }
 
     const savePromises = picks.map((pick: any) => {
+      // Create a composite sort key that includes both week and gameId
+      const sortKey = `${week}#${pick.gameId}`;
+      
       const item = {
         userId,
-        weekId: week,  // Changed from week to weekId to match GET response
+        sortKey,  // Primary sort key combining week and gameId
+        weekId: week,  // Additional field for easy querying
         team: pick.team,
         predictedLine: pick.predictedLine,
-        actualLine: pick.actualLine || 0, // Default to 0 if not set
+        actualLine: pick.actualLine || 0,
         gameId: pick.gameId,
         timestamp: new Date().toISOString()
       };
@@ -145,7 +162,8 @@ export async function POST(request: Request) {
       savedPicks: picks.map(pick => ({
         team: pick.team,
         predictedLine: pick.predictedLine,
-        weekId: week
+        gameId: pick.gameId,
+        sortKey: `${week}#${pick.gameId}`
       }))
     });
     
