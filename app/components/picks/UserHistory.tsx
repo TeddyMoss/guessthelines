@@ -6,7 +6,7 @@ import { getUserPicks } from '@/lib/dynamodb';
 import Link from 'next/link';
 
 interface Pick {
-  weekId: string;  // Changed from week to match DynamoDB
+  weekId: string;
   team: string;
   predictedLine: number;
   actualLine: number;
@@ -22,15 +22,19 @@ export default function UserHistory({ userId }: { userId: string }) {
   useEffect(() => {
     const loadPicks = async () => {
       try {
-        console.log('Fetching picks for user:', userId);
+        console.log('Starting picks fetch for user:', userId);
         const userPicks = await getUserPicks(userId);
-        console.log('Loaded picks in history:', {
-          total: userPicks.length,
-          picks: userPicks
-        });
+        
+        // Debug log the raw picks data
+        console.log('Raw picks data:', JSON.stringify(userPicks, null, 2));
+        
         setPicks(userPicks);
       } catch (error) {
-        console.error('Error loading picks:', error);
+        console.error('Error loading picks:', {
+          error,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          userId
+        });
         setError('Failed to load picks history');
       } finally {
         setLoading(false);
@@ -62,7 +66,10 @@ export default function UserHistory({ userId }: { userId: string }) {
     );
   }
 
-  if (!picks.length) {
+  // Debug log the picks state
+  console.log('Current picks state:', JSON.stringify(picks, null, 2));
+
+  if (!picks?.length) {
     return (
       <div className="text-center py-16 px-4">
         <h3 className="text-xl font-bold text-gray-900 mb-2">No Picks Yet</h3>
@@ -77,15 +84,32 @@ export default function UserHistory({ userId }: { userId: string }) {
     );
   }
 
-  // Group picks by week
+  // Group picks by week with debug logging
   const picksByWeek = picks.reduce((acc, pick) => {
-    const week = pick.weekId;
-    if (!acc[week]) {
-      acc[week] = [];
+    if (!pick.weekId) {
+      console.warn('Pick missing weekId:', pick);
+      return acc;
     }
-    acc[week].push(pick);
+    
+    if (!acc[pick.weekId]) {
+      acc[pick.weekId] = [];
+    }
+    acc[pick.weekId].push(pick);
     return acc;
   }, {} as Record<string, Pick[]>);
+
+  // Debug log the grouped picks
+  console.log('Grouped picks:', {
+    byWeek: Object.entries(picksByWeek).map(([week, weekPicks]) => ({
+      week,
+      count: weekPicks.length,
+      picks: weekPicks.map(p => p.team)
+    }))
+  });
+
+  // Get weeks and sort them in reverse order
+  const weeks = Object.keys(picksByWeek).sort((a, b) => parseInt(b) - parseInt(a));
+  console.log('Sorted weeks:', weeks);
 
   return (
     <div className="overflow-hidden p-4">
@@ -100,9 +124,11 @@ export default function UserHistory({ userId }: { userId: string }) {
           </Link>
         </div>
 
-        {Object.entries(picksByWeek)
-          .sort(([weekA], [weekB]) => parseInt(weekB) - parseInt(weekA))
-          .map(([week, weekPicks]) => (
+        {weeks.map(week => {
+          const weekPicks = picksByWeek[week];
+          console.log(`Rendering week ${week}:`, weekPicks);
+          
+          return (
             <div key={week} className="mb-8">
               <h3 className="text-xl font-semibold mb-4">Week {week}</h3>
               <div className="bg-white shadow overflow-hidden rounded-lg">
@@ -118,8 +144,10 @@ export default function UserHistory({ userId }: { userId: string }) {
                   <tbody className="divide-y divide-gray-200">
                     {weekPicks.map((pick) => {
                       const difference = Math.abs(pick.predictedLine - pick.actualLine);
+                      console.log(`Rendering pick for ${pick.team}:`, pick);
+                      
                       return (
-                        <tr key={pick.gameId}>
+                        <tr key={pick.gameId} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm text-gray-900">{pick.team}</td>
                           <td className="px-4 py-3 text-sm text-right">
                             {pick.predictedLine > 0 ? `+${pick.predictedLine}` : pick.predictedLine}
@@ -135,12 +163,14 @@ export default function UserHistory({ userId }: { userId: string }) {
                             {difference.toFixed(1)}
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
-          ))}
+          );
+        })}
       </div>
     </div>
   );

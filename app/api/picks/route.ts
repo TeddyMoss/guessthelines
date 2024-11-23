@@ -68,11 +68,22 @@ export async function GET(request: Request) {
 
     console.log('Final result:', {
       totalItems: allItems.length,
-      uniqueWeeks: [...new Set(allItems.map(item => item.weekId))].sort()
+      uniqueWeeks: [...new Set(allItems.map(item => item.weekId))].sort(),
+      itemSample: allItems.slice(0, 2)
     });
 
+    // Map the items to ensure consistent field names
+    const mappedItems = allItems.map(item => ({
+      weekId: item.weekId,  // Keep weekId consistent
+      team: item.team,
+      predictedLine: item.predictedLine,
+      actualLine: item.actualLine || 0, // Default to 0 if not set
+      gameId: item.gameId,
+      timestamp: item.timestamp
+    }));
+
     return NextResponse.json({
-      picks: allItems
+      picks: mappedItems
     });
   } catch (error) {
     console.error('Error fetching picks:', {
@@ -90,7 +101,19 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { userId, week, picks } = await request.json();
-    console.log('Saving picks:', { userId, week, picksCount: picks?.length });
+    
+    // Enhanced logging for debugging
+    console.log('Received picks data:', {
+      userId,
+      week,
+      picksCount: picks?.length,
+      picksDetail: picks?.map(p => ({
+        keys: Object.keys(p),
+        gameId: p.gameId,
+        team: p.team,
+        predictedLine: p.predictedLine
+      }))
+    });
 
     if (!userId || !week || !picks) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
@@ -99,15 +122,15 @@ export async function POST(request: Request) {
     const savePromises = picks.map((pick: any) => {
       const item = {
         userId,
-        weekId: week,
+        weekId: week,  // Changed from week to weekId to match GET response
         team: pick.team,
         predictedLine: pick.predictedLine,
-        actualLine: pick.actualLine,
+        actualLine: pick.actualLine || 0, // Default to 0 if not set
         gameId: pick.gameId,
         timestamp: new Date().toISOString()
       };
 
-      console.log('Saving pick:', item);
+      console.log('Saving pick item:', item);
       return docClient.send(new PutCommand({
         TableName: 'UserPicks',
         Item: item
@@ -115,7 +138,17 @@ export async function POST(request: Request) {
     });
 
     await Promise.all(savePromises);
-    console.log('Successfully saved all picks');
+    console.log('Successfully saved all picks:', {
+      userId,
+      week,
+      count: picks.length,
+      savedPicks: picks.map(pick => ({
+        team: pick.team,
+        predictedLine: pick.predictedLine,
+        weekId: week
+      }))
+    });
+    
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Save error:', {
