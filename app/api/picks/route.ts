@@ -34,26 +34,23 @@ export async function GET(request: Request) {
       KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: {
         ':userId': userId
-      },
-      Limit: 100,
-      ScanIndexForward: false  // Get most recent first
+      }
     };
 
     if (week) {
-      queryParams.KeyConditionExpression += ' AND begins_with(sortKey, :weekPrefix)';
-      queryParams.ExpressionAttributeValues[':weekPrefix'] = `${week}#`;
+      queryParams.KeyConditionExpression += ' AND begins_with(gameKey, :weekPrefix)';
+      queryParams.ExpressionAttributeValues[':weekPrefix'] = `WEEK#${week}`;
     }
 
     console.log('Query params:', queryParams);
     const result = await docClient.send(new QueryCommand(queryParams));
     
-    console.log('Query response:', {
+    console.log('Initial query response:', {
       itemCount: result.Items?.length,
       firstItem: result.Items?.[0],
       hasMore: !!result.LastEvaluatedKey
     });
 
-    // If there are more items, get them all
     let allItems = result.Items || [];
     let lastKey = result.LastEvaluatedKey;
 
@@ -66,23 +63,22 @@ export async function GET(request: Request) {
       lastKey = nextResult.LastEvaluatedKey;
     }
 
-    console.log('Final result:', {
-      totalItems: allItems.length,
-      uniqueWeeks: [...new Set(allItems.map(item => item.weekId))].sort(),
-      itemSample: allItems.slice(0, 2)
+    console.log('All fetched items:', allItems);
+
+    // Transform items to extract week from gameKey and prepare for client
+    const mappedItems = allItems.map(item => {
+      const weekId = item.gameKey.split('#')[1];  // Extract week from WEEK#12#GAME#123
+      return {
+        weekId,
+        team: item.team,
+        predictedLine: item.predictedLine,
+        actualLine: item.actualLine || 0,
+        gameId: item.gameId,
+        timestamp: item.timestamp
+      };
     });
 
-    // Map the items to ensure consistent field names and group by week
-    const mappedItems = allItems.map(item => ({
-      weekId: item.weekId,
-      team: item.team,
-      predictedLine: item.predictedLine,
-      actualLine: item.actualLine || 0,
-      gameId: item.gameId,
-      timestamp: item.timestamp
-    }));
-
-    // Group by week to ensure we're returning all picks for each week
+    // Group by week for logging
     const picksByWeek = mappedItems.reduce((acc, item) => {
       if (!acc[item.weekId]) {
         acc[item.weekId] = [];
@@ -91,7 +87,7 @@ export async function GET(request: Request) {
       return acc;
     }, {});
 
-    console.log('Picks by week:', Object.entries(picksByWeek).map(([week, picks]) => ({
+    console.log('Picks grouped by week:', Object.entries(picksByWeek).map(([week, picks]) => ({
       week,
       count: picks.length,
       teams: picks.map(p => p.team)
@@ -133,13 +129,11 @@ export async function POST(request: Request) {
     }
 
     const savePromises = picks.map((pick: any) => {
-      // Create a composite sort key that includes both week and gameId
-      const sortKey = `${week}#${pick.gameId}`;
+      const gameKey = `WEEK#${week}#GAME#${pick.gameId}`;
       
       const item = {
         userId,
-        sortKey,  // Primary sort key combining week and gameId
-        weekId: week,  // Additional field for easy querying
+        gameKey,
         team: pick.team,
         predictedLine: pick.predictedLine,
         actualLine: pick.actualLine || 0,
@@ -155,6 +149,7 @@ export async function POST(request: Request) {
     });
 
     await Promise.all(savePromises);
+    
     console.log('Successfully saved all picks:', {
       userId,
       week,
@@ -163,7 +158,7 @@ export async function POST(request: Request) {
         team: pick.team,
         predictedLine: pick.predictedLine,
         gameId: pick.gameId,
-        sortKey: `${week}#${pick.gameId}`
+        gameKey: `WEEK#${week}#GAME#${pick.gameId}`
       }))
     });
     
