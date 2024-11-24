@@ -44,38 +44,73 @@ async function fetchOddsData(): Promise<Game[]> {
   const API_KEY = process.env.ODDS_API_KEY;
   
   if (!API_KEY) {
-    console.error('ODDS_API_KEY not found');
     throw new Error('API key not configured');
   }
 
-  const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds';
-  const fullUrl = `${ODDS_API_URL}?apiKey=${API_KEY}&regions=us&markets=spreads`;
-  
   try {
-    const response = await fetch(fullUrl, {
+    // Calculate date range
+    const now = new Date();
+    const threeDaysAgo = new Date(now);
+    threeDaysAgo.setDate(now.getDate() - 3);
+    
+    const twoWeeksFromNow = new Date(now);
+    twoWeeksFromNow.setDate(now.getDate() + 14);
+
+    // Format dates for API
+    const dateFrom = threeDaysAgo.toISOString().split('T')[0];
+    const dateTo = twoWeeksFromNow.toISOString().split('T')[0];
+
+    const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds';
+    const params = new URLSearchParams({
+      apiKey: API_KEY,
+      regions: 'us',
+      markets: 'spreads',
+      dateFormat: 'iso',
+      commenceTimeFrom: `${dateFrom}T00:00:00Z`,
+      commenceTimeTo: `${dateTo}T23:59:59Z`
+    });
+
+    console.log('Fetching games with date range:', {
+      from: dateFrom,
+      to: dateTo,
+      url: `${ODDS_API_URL}?${params.toString().replace(API_KEY, 'HIDDEN')}`
+    });
+
+    const response = await fetch(`${ODDS_API_URL}?${params}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json'
-      },
-      next: { revalidate: 300 }
+      }
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Odds API Error:', {
+      console.error('API Error:', {
         status: response.status,
         statusText: response.statusText,
-        body: errorText
+        error: errorText
       });
-      throw new Error(`Odds API request failed: ${response.status}`);
+      throw new Error(`API request failed: ${response.status}`);
     }
 
     const data = await response.json();
 
-    return data
+    console.log('Raw API response:', {
+      totalGames: data.length,
+      dateRange: {
+        earliest: data.length ? new Date(Math.min(...data.map(g => new Date(g.commence_time).getTime()))).toISOString() : null,
+        latest: data.length ? new Date(Math.max(...data.map(g => new Date(g.commence_time).getTime()))).toISOString() : null
+      },
+      games: data.map(g => ({
+        teams: `${g.away_team} @ ${g.home_team}`,
+        date: g.commence_time,
+        bookmakers: g.bookmakers?.length
+      }))
+    });
+
+    const processedGames = data
       .filter(game => game.sport_key === 'americanfootball_nfl')
       .map(game => {
-        // Find FanDuel bookmaker
         const fanduel = game.bookmakers?.find(b => b.key === 'fanduel');
         if (!fanduel) return null;
 
@@ -83,14 +118,12 @@ async function fetchOddsData(): Promise<Game[]> {
         const homeOutcome = spread?.outcomes?.find(o => o.name === game.home_team);
         const awayOutcome = spread?.outcomes?.find(o => o.name === game.away_team);
 
-        // Skip if no valid spread data
         if (!spread || !homeOutcome || !awayOutcome) return null;
 
-        // Always use the home team's line for consistency
         const line = homeOutcome.point;
         const favorite = homeOutcome.point < 0 ? game.home_team : game.away_team;
 
-        // Use game date to determine week number
+        // Calculate week number
         const gameDate = new Date(game.commence_time);
         const yearStart = getSeasonStartDate(gameDate.getFullYear());
         if (gameDate.getMonth() < 8) {
@@ -99,18 +132,8 @@ async function fetchOddsData(): Promise<Game[]> {
         const diffTime = gameDate.getTime() - yearStart.getTime();
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         const gameWeek = Math.floor(diffDays / 7) + 1;
-        
-        console.log('Line Calculation:', {
-          game: `${game.away_team} @ ${game.home_team}`,
-          homeTeam: game.home_team,
-          homeLine: homeOutcome.point,
-          awayTeam: game.away_team,
-          awayLine: awayOutcome.point,
-          storedLine: line,
-          favorite
-        });
 
-        return {
+        const processedGame = {
           id: game.id,
           weekNumber: Math.min(Math.max(gameWeek, 1), 18).toString(),
           away_team: game.away_team,
@@ -119,9 +142,29 @@ async function fetchOddsData(): Promise<Game[]> {
           vegas_line: line,
           favorite
         };
+
+        return processedGame;
       })
-      .filter(game => game !== null)
-      .sort((a, b) => new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime());
+      .filter((game): game is Game => game !== null);
+
+    // Log processed games by week
+    const gamesByWeek = processedGames.reduce((acc, game) => {
+      if (!acc[game.weekNumber]) {
+        acc[game.weekNumber] = [];
+      }
+      acc[game.weekNumber].push(game);
+      return acc;
+    }, {} as Record<string, Game[]>);
+
+    console.log('Processed games by week:', Object.entries(gamesByWeek).map(([week, games]) => ({
+      week,
+      count: games.length,
+      games: games.map(g => `${g.away_team} @ ${g.home_team}`)
+    })));
+
+    return processedGames.sort((a, b) => 
+      new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime()
+    );
   } catch (error) {
     console.error('Error in fetchOddsData:', error);
     throw error;
@@ -130,19 +173,30 @@ async function fetchOddsData(): Promise<Game[]> {
 
 function generateWeeks(games: Game[]): WeekInfo[] {
   const currentWeek = parseInt(getCurrentWeekNumber());
-  const allWeeks = Array.from({ length: 18 }, (_, i) => (i + 1).toString())
-    // Only include current week and future weeks
-    .filter(weekNum => parseInt(weekNum) >= currentWeek);
   
-  return allWeeks.map(weekNum => {
+  // Get all weeks that have games
+  const weeksWithGames = [...new Set(games.map(g => parseInt(g.weekNumber)))];
+  
+  console.log('Week generation:', {
+    currentWeek,
+    weeksWithGames,
+    gamesCount: games.length
+  });
+
+  // Always include current week and next week
+  const weeksList = [currentWeek, currentWeek + 1]
+    .filter(w => w <= 18)
+    .sort((a, b) => a - b);
+
+  return weeksList.map(weekNum => {
     const seasonStart = getSeasonStartDate(new Date().getFullYear());
     const weekStart = new Date(seasonStart);
-    weekStart.setDate(weekStart.getDate() + (parseInt(weekNum) - 1) * 7);
+    weekStart.setDate(weekStart.getDate() + (weekNum - 1) * 7);
     
     return {
-      number: weekNum,
+      number: weekNum.toString(),
       startDate: weekStart.toISOString(),
-      available: true
+      available: weeksWithGames.includes(weekNum)
     };
   });
 }
@@ -154,6 +208,16 @@ export async function GET() {
     const games = await fetchOddsData();
     const weeks = generateWeeks(games);
     const currentWeek = getCurrentWeekNumber();
+
+    console.log('API Response:', {
+      totalGames: games.length,
+      weeks: weeks.map(w => ({
+        number: w.number,
+        available: w.available,
+        games: games.filter(g => g.weekNumber === w.number)
+          .map(g => `${g.away_team} @ ${g.home_team}`)
+      }))
+    });
 
     return NextResponse.json({
       games,
@@ -169,7 +233,7 @@ export async function GET() {
       currentWeek: getCurrentWeekNumber(),
       error: 'Unable to fetch game data. Please try again later.'
     }, { 
-      status: 500
+      status: 500 
     });
   }
 }
