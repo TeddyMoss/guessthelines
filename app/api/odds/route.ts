@@ -40,7 +40,7 @@ function getCurrentWeekNumber(): string {
   return Math.min(Math.max(weekNumber, 1), 18).toString();
 }
 
-async function fetchOddsData(): Promise<Game[]> {
+async function fetchAvailableGames(): Promise<Game[]> {
   const API_KEY = process.env.ODDS_API_KEY;
   
   if (!API_KEY) {
@@ -48,64 +48,57 @@ async function fetchOddsData(): Promise<Game[]> {
   }
 
   try {
-    // Calculate date range
-    const now = new Date();
-    const threeDaysAgo = new Date(now);
-    threeDaysAgo.setDate(now.getDate() - 3);
-    
-    const twoWeeksFromNow = new Date(now);
-    twoWeeksFromNow.setDate(now.getDate() + 14);
-
-    // Format dates for API
-    const dateFrom = threeDaysAgo.toISOString().split('T')[0];
-    const dateTo = twoWeeksFromNow.toISOString().split('T')[0];
-
-    const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds';
-    const params = new URLSearchParams({
+    // First, get all available NFL events
+    const EVENTS_URL = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl/events';
+    const eventsParams = new URLSearchParams({
       apiKey: API_KEY,
-      regions: 'us',
-      markets: 'spreads',
-      dateFormat: 'iso',
-      commenceTimeFrom: `${dateFrom}T00:00:00Z`,
-      commenceTimeTo: `${dateTo}T23:59:59Z`
+      dateFormat: 'iso'
     });
 
-    console.log('Fetching games with date range:', {
-      from: dateFrom,
-      to: dateTo,
-      url: `${ODDS_API_URL}?${params.toString().replace(API_KEY, 'HIDDEN')}`
-    });
-
-    const response = await fetch(`${ODDS_API_URL}?${params}`, {
+    console.log('Fetching available events');
+    
+    const eventsResponse = await fetch(`${EVENTS_URL}?${eventsParams}`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json'
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (!eventsResponse.ok) {
+      throw new Error(`Events API request failed: ${eventsResponse.status}`);
+    }
+
+    const events = await eventsResponse.json();
+    
+    console.log('Available events:', {
+      count: events.length,
+      dateRange: {
+        earliest: events.length ? new Date(Math.min(...events.map(e => new Date(e.commence_time).getTime()))).toISOString() : null,
+        latest: events.length ? new Date(Math.max(...events.map(e => new Date(e.commence_time).getTime()))).toISOString() : null
       }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText
-      });
-      throw new Error(`API request failed: ${response.status}`);
+    // Then get odds for these events
+    const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds';
+    const oddsParams = new URLSearchParams({
+      apiKey: API_KEY,
+      regions: 'us',
+      markets: 'spreads',
+      dateFormat: 'iso'
+    });
+
+    const oddsResponse = await fetch(`${ODDS_API_URL}?${oddsParams}`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (!oddsResponse.ok) {
+      throw new Error(`Odds API request failed: ${oddsResponse.status}`);
     }
 
-    const data = await response.json();
+    const data = await oddsResponse.json();
 
-    console.log('Raw API response:', {
+    console.log('Raw odds response:', {
       totalGames: data.length,
-      dateRange: {
-        earliest: data.length ? new Date(Math.min(...data.map(g => new Date(g.commence_time).getTime()))).toISOString() : null,
-        latest: data.length ? new Date(Math.max(...data.map(g => new Date(g.commence_time).getTime()))).toISOString() : null
-      },
-      games: data.map(g => ({
-        teams: `${g.away_team} @ ${g.home_team}`,
-        date: g.commence_time,
-        bookmakers: g.bookmakers?.length
-      }))
+      dates: data.map(g => g.commence_time).sort()
     });
 
     const processedGames = data
@@ -147,26 +140,15 @@ async function fetchOddsData(): Promise<Game[]> {
       })
       .filter((game): game is Game => game !== null);
 
-    // Log processed games by week
-    const gamesByWeek = processedGames.reduce((acc, game) => {
-      if (!acc[game.weekNumber]) {
-        acc[game.weekNumber] = [];
-      }
-      acc[game.weekNumber].push(game);
-      return acc;
-    }, {} as Record<string, Game[]>);
-
-    console.log('Processed games by week:', Object.entries(gamesByWeek).map(([week, games]) => ({
-      week,
-      count: games.length,
-      games: games.map(g => `${g.away_team} @ ${g.home_team}`)
-    })));
+    // Log weeks found
+    const weeksCovered = [...new Set(processedGames.map(g => g.weekNumber))].sort();
+    console.log('Weeks covered:', weeksCovered);
 
     return processedGames.sort((a, b) => 
       new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime()
     );
   } catch (error) {
-    console.error('Error in fetchOddsData:', error);
+    console.error('Error fetching games:', error);
     throw error;
   }
 }
@@ -183,10 +165,12 @@ function generateWeeks(games: Game[]): WeekInfo[] {
     gamesCount: games.length
   });
 
-  // Always include current week and next week
-  const weeksList = [currentWeek, currentWeek + 1]
-    .filter(w => w <= 18)
-    .sort((a, b) => a - b);
+  // Get the highest week number from available games
+  const maxWeek = Math.max(...weeksWithGames);
+  const weeksList = Array.from(
+    { length: maxWeek - currentWeek + 1 },
+    (_, i) => currentWeek + i
+  ).filter(w => w <= 18);
 
   return weeksList.map(weekNum => {
     const seasonStart = getSeasonStartDate(new Date().getFullYear());
@@ -205,7 +189,7 @@ export async function GET() {
   console.log('Starting /api/odds request');
   
   try {
-    const games = await fetchOddsData();
+    const games = await fetchAvailableGames();
     const weeks = generateWeeks(games);
     const currentWeek = getCurrentWeekNumber();
 
