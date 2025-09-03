@@ -27,17 +27,24 @@ function getSeasonStartDate(year: number): Date {
 function getCurrentWeekNumber(): string {
   const now = new Date();
   const currentYear = now.getFullYear();
-  const seasonStart = getSeasonStartDate(currentYear);
   
-  if (now.getMonth() < 8) {
-    seasonStart.setFullYear(currentYear - 1);
-  }
+  // Determine which NFL season we're in
+  // NFL season runs Sept-Feb, so Jan-Aug = previous season
+  const seasonYear = now.getMonth() < 8 ? currentYear - 1 : currentYear;
+  const seasonStart = getSeasonStartDate(seasonYear);
   
   const diffTime = now.getTime() - seasonStart.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   const weekNumber = Math.floor(diffDays / 7) + 1;
   
-  return Math.min(Math.max(weekNumber, 1), 18).toString();
+  console.log('Week calculation:', {
+    currentDate: now.toISOString(),
+    seasonYear,
+    seasonStart: seasonStart.toISOString(),
+    calculatedWeek: weekNumber
+  });
+  
+  return Math.min(Math.max(weekNumber, 1), 22).toString(); // Increased max for playoffs
 }
 
 async function fetchOddsData(): Promise<Game[]> {
@@ -61,8 +68,7 @@ async function fetchOddsData(): Promise<Game[]> {
     response = await fetch(`${ODDS_API_URL}?${params}`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      // Add caching to help with rate limits
-      next: { revalidate: 300 } // Cache for 5 minutes
+      next: { revalidate: 300 }
     });
   } catch (error) {
     console.error('Network error fetching odds:', error);
@@ -106,17 +112,17 @@ async function fetchOddsData(): Promise<Game[]> {
       const favorite = homeOutcome.point < 0 ? game.home_team : game.away_team;
 
       const gameDate = new Date(game.commence_time);
-      const yearStart = getSeasonStartDate(gameDate.getFullYear());
-      if (gameDate.getMonth() < 8) {
-        yearStart.setFullYear(yearStart.getFullYear() - 1);
-      }
+      // Use same logic for determining season year
+      const gameSeasonYear = gameDate.getMonth() < 8 ? gameDate.getFullYear() - 1 : gameDate.getFullYear();
+      const yearStart = getSeasonStartDate(gameSeasonYear);
+
       const diffTime = gameDate.getTime() - yearStart.getTime();
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
       const gameWeek = Math.floor(diffDays / 7) + 1;
 
       return {
         id: game.id,
-        weekNumber: Math.min(Math.max(gameWeek, 1), 18).toString(),
+        weekNumber: Math.min(Math.max(gameWeek, 1), 22).toString(),
         away_team: game.away_team,
         home_team: game.home_team,
         commence_time: game.commence_time,
@@ -139,11 +145,13 @@ function generateWeeks(games: Game[]): WeekInfo[] {
   });
 
   const weeksList = [currentWeek, currentWeek + 1]
-    .filter(w => w <= 18)
+    .filter(w => w <= 22)
     .sort((a, b) => a - b);
 
   return weeksList.map(weekNum => {
-    const seasonStart = getSeasonStartDate(new Date().getFullYear());
+    const now = new Date();
+    const seasonYear = now.getMonth() < 8 ? now.getFullYear() - 1 : now.getFullYear();
+    const seasonStart = getSeasonStartDate(seasonYear);
     const weekStart = new Date(seasonStart);
     weekStart.setDate(weekStart.getDate() + (weekNum - 1) * 7);
     
@@ -162,6 +170,12 @@ export async function GET() {
     const games = await fetchOddsData();
     const weeks = generateWeeks(games);
     const currentWeek = getCurrentWeekNumber();
+
+    console.log('Final response:', {
+      totalGames: games.length,
+      currentWeek,
+      availableWeeks: weeks.map(w => w.number)
+    });
 
     return NextResponse.json({
       games,
